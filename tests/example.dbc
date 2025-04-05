@@ -1,0 +1,12 @@
+VERSION "1"
+
+NS_ :
+
+BS_:
+
+BU_: Ecu1 Ecu2
+
+BO_ 1023 SomeMessage: 4 Ecu1
+ SG_ Unsigned16 : 16|16@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Unsigned8 : 8|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Signed8 : 0|8@1- (1,0) [0|0] "" Vector__XXX

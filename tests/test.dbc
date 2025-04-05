@@ -6,11 +6,23 @@ BS_:
 
 BU_: Ecu1 Ecu2
 
-BO_ 1023 Message1: 4 Ecu1
- SG_ Unsigned16 : 16|16@1+ (1,0) [0|0] "" Vector__XXX
+BO_ 1023 AlignedMessage: 8 Ecu1
+ SG_ Signed32 : 32|32@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Unsigned16 : 16|16@0+ (1,0) [0|0] "" Vector__XXX
  SG_ Unsigned8 : 8|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Signed8 : 0|8@1- (1,0) [0|0] "" Vector__XXX
 
-BO_ 8191 Message2: 1 Ecu2
+BO_ 8191 MiscMessage: 2 Ecu2
  SG_ Bool_A : 0|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ Bool_B : 1|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ Bool_H : 7|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ Float_A : 8|8@1+ (0.5,0) [0|0] "" Vector__XXX
 
+BO_ 64 SixtyFourBitLE: 8 Ecu2
+ SG_ SixtyFour : 0|64@1+ (1,0) [0|0] "" Vector_XXX
+
+BO_ 65 SixtyFourBitBE: 8 Ecu2
+ SG_ SixtyFour : 0|64@0+ (1,0) [0|0] "" Vector_XXX
+
+BO_ 66 SixtyFourBitSigned: 8 Ecu2
+ SG_ SixtyFour : 0|64@1- (1,0) [0|0] "" Vector_XXX
