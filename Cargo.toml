@@ -9,5 +9,8 @@ repository = "https://gitlab.com/mfairman/dbc-data"
 license = "MIT"
 
 
+[dev-dependencies]
+assert_hex = "0.4.1"
+
 [dependencies]
 dbc-data-derive = { path = "dbc-data-derive" }

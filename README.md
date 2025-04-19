@@ -2,8 +2,8 @@
 
 A derive-macro which produces code to access signals within CAN
 messages, as described by a `.dbc` file.  The generated code has
-very few dependencies, limited to core primitives and `[u8]`
-slices, and is `#[no_std]` compatible.
+very few dependencies: just core primitives and `[u8]` slices, and
+is `#[no_std]` compatible.
 
 ## Example
 
@@ -50,8 +50,15 @@ For cases where only certain signals within a message are needed, the
 
 See the test cases in this crate for examples of usage.
 
-## TODOs
+## Functionality
 
-* [ ] support unaligned signals
-* [ ] support `f32` types when offset/scale are present
+* [x] decode signals from PDU
+* [ ] encode signals into PDU
+
+* [ ] generate dispatcher for decoding based on ID
+* [ ] support multiplexed signals
 * [ ] consider scoping generated types to a module
+
+## License
+
+[MIT](/LICENSE-MIT)

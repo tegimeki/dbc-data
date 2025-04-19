@@ -6,23 +6,42 @@ BS_:
 
 BU_: Ecu1 Ecu2
 
-BO_ 1023 AlignedMessage: 8 Ecu1
- SG_ Signed32 : 32|32@0+ (1,0) [0|0] "" Vector__XXX
- SG_ Unsigned16 : 16|16@0+ (1,0) [0|0] "" Vector__XXX
+BO_ 1023 AlignedUnsignedLE: 8 Ecu1
+ SG_ Unsigned32 : 32|32@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Unsigned16 : 16|16@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Unsigned8 : 8|8@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Signed8 : 0|8@1- (1,0) [0|0] "" Vector__XXX
+
+BO_ 1025 UnalignedUnsignedLE: 8 Ecu1
+ SG_ Unsigned15 : 43|15@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Unsigned23 : 18|23@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Unsigned3 : 11|3@1+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 1026 UnalignedUnsignedBE: 8 Ecu1
+ SG_ Unsigned15 : 43|15@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Unsigned23 : 18|23@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Unsigned3 : 11|3@0+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 1025 UnalignedSignedLE: 8 Ecu1
+ SG_ Signed15 : 43|15@1- (1,0) [0|0] "" Vector__XXX
+ SG_ Signed23 : 18|23@1- (1,0) [0|0] "" Vector__XXX
+ SG_ Signed3 : 11|3@1- (1,0) [0|0] "" Vector__XXX
+
+BO_ 1026 UnalignedSignedBE: 8 Ecu1
+ SG_ Signed15 : 43|15@0- (1,0) [0|0] "" Vector__XXX
+ SG_ Signed23 : 18|23@0- (1,0) [0|0] "" Vector__XXX
+ SG_ Signed3 : 11|3@0- (1,0) [0|0] "" Vector__XXX
 
 BO_ 8191 MiscMessage: 2 Ecu2
  SG_ Bool_A : 0|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ Bool_B : 1|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ Bool_H : 7|1@1+ (1,0) [0|1] "" Vector__XXX
- SG_ Float_A : 8|8@1+ (0.5,0) [0|0] "" Vector__XXX
+ SG_ Float_A : 8|8@1+ (0.5,0.25) [0|0] "" Vector__XXX
 
 BO_ 64 SixtyFourBitLE: 8 Ecu2
  SG_ SixtyFour : 0|64@1+ (1,0) [0|0] "" Vector_XXX
 
 BO_ 65 SixtyFourBitBE: 8 Ecu2
- SG_ SixtyFour : 0|64@0+ (1,0) [0|0] "" Vector_XXX
+ SG_ SixtyFour : 7|64@0+ (1,0) [0|0] "" Vector_XXX
 
 BO_ 66 SixtyFourBitSigned: 8 Ecu2
  SG_ SixtyFour : 0|64@1- (1,0) [0|0] "" Vector_XXX

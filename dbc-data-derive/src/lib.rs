@@ -59,6 +59,7 @@ struct SignalInfo<'a> {
     signal: &'a Signal,
     ident: Ident,
     ntype: Ident,
+    utype: Ident,
     start: usize,
     width: usize,
     nwidth: usize,
@@ -74,7 +75,7 @@ impl<'a> SignalInfo<'a> {
         let width = *signal.signal_size() as usize;
         let scale = *signal.factor() as f32;
 
-        // get native width of signal data
+        // get storage width of signal data
         let nwidth = match width {
             1 => 1,
             2..=8 => 8,
@@ -83,21 +84,20 @@ impl<'a> SignalInfo<'a> {
             _ => 64,
         };
 
-        // get native type for signal
-        let t = if scale == 1.0 {
-            if width == 1 {
-                "bool"
-            } else {
-                &format!("{}{}", if signed { "i" } else { "u" }, nwidth)
-            }
+        let utype = if width == 1 {
+            "bool"
         } else {
-            "f32"
+            &format!("{}{}", if signed { "i" } else { "u" }, nwidth)
         };
+
+        // get native type for signal
+        let ntype = if scale == 1.0 { utype } else { "f32" };
 
         Self {
             signal,
             ident: Ident::new(&name, message.ident.span()),
-            ntype: Ident::new(t, message.ident.span()),
+            ntype: Ident::new(ntype, message.ident.span()),
+            utype: Ident::new(utype, message.ident.span()),
             start: *signal.start_bit() as usize,
             scale,
             signed,
@@ -106,52 +106,166 @@ impl<'a> SignalInfo<'a> {
         }
     }
 
-    /// Generate the code for extracting signal bits into a
-    /// typed value
+    /// Generate the code for extracting signal bits
     fn gen_bits(&self) -> TokenStream {
-        let byte = self.start / 8;
+        let low = self.start / 8;
         let left = self.start % 8;
-        let _right = (self.start + self.width) % 8;
-        let ntype = &self.ntype;
+        let high = (self.start + self.width - 1) / 8;
+        let right = (self.start + self.width) % 8;
+        let utype = &self.utype;
         let le = self.signal.byte_order() == &ByteOrder::LittleEndian;
-        let ext = if le {
-            Ident::new("from_le_bytes", ntype.span())
-        } else {
-            Ident::new("from_be_bytes", ntype.span())
-        };
+
+        let mut ts = TokenStream::new();
         if self.width == self.nwidth && left == 0 {
             // aligned
-            match self.width {
+            let ext = if le {
+                Ident::new("from_le_bytes", utype.span())
+            } else {
+                Ident::new("from_be_bytes", utype.span())
+            };
+            let tokens = match self.width {
                 8 => quote! {
-                    #ntype::#ext([self.pdu[#byte]]);
+                    #utype::#ext([self.pdu[#low]])
                 },
                 16 => quote! {
-                    #ntype::#ext([self.pdu[#byte], self.pdu[#byte + 1]]);
+                    #utype::#ext([self.pdu[#low],
+                                  self.pdu[#low + 1]])
                 },
                 32 => quote! {
-                    #ntype::#ext([self.pdu[#byte + 0],
-                                          self.pdu[#byte + 1],
-                                          self.pdu[#byte + 2],
-                                          self.pdu[#byte + 3]]);
+                    #utype::#ext([self.pdu[#low + 0],
+                                  self.pdu[#low + 1],
+                                  self.pdu[#low + 2],
+                                  self.pdu[#low + 3]])
                 },
+                // NOTE: this compiles to very small code and does not
+                // involve actually fetching 8 separate bytes; e.g. on
+                // armv7 an `ldrd` to get both 32-bit values followed by
+                // two `rev` instructions to reverse the bytes.
                 64 => quote! {
-                    #ntype::#ext([self.pdu[#byte + 0],
-                                          self.pdu[#byte + 1],
-                                          self.pdu[#byte + 2],
-                                          self.pdu[#byte + 3],
-                                          self.pdu[#byte + 4],
-                                          self.pdu[#byte + 5],
-                                          self.pdu[#byte + 6],
-                                          self.pdu[#byte + 7],
-                    ]);
+                    #utype::#ext([self.pdu[#low + 0],
+                                  self.pdu[#low + 1],
+                                  self.pdu[#low + 2],
+                                  self.pdu[#low + 3],
+                                  self.pdu[#low + 4],
+                                  self.pdu[#low + 5],
+                                  self.pdu[#low + 6],
+                                  self.pdu[#low + 7],
+                    ])
                 },
                 _ => unimplemented!(),
-            }
+            };
+            ts.append_all(tokens);
         } else {
-            // unaligned / uneven
-            let _ = self.signed;
-            todo!();
+            if le {
+                let count = high - low;
+                for o in 0..=count {
+                    let byte = low + o;
+                    if o == 0 {
+                        // first byte
+                        ts.append_all(quote! {
+                            let v = self.pdu[#byte] as #utype;
+                        });
+                        if left != 0 {
+                            if count == 0 {
+                                ts.append_all(quote! {
+                                    let v = (v >> #left) & ((1 << #left) - 1);
+                                });
+                            } else {
+                                ts.append_all(quote! {
+                                    let v = v >> #left;
+                                });
+                            }
+                        }
+                    } else {
+                        let shift = (o * 8) - left;
+                        if o == count && right != 0 {
+                            ts.append_all(quote! {
+                                let v = v | (((self.pdu[#byte]
+                                               & ((1 << #right) - 1))
+                                              as #utype) << #shift);
+                            });
+                        } else {
+                            ts.append_all(quote! {
+                            let v = v | ((self.pdu[#byte] as #utype) << #shift);
+                        });
+                        }
+                    }
+                }
+            } else {
+                // big-endian
+                let mut rem = self.width;
+                let mut byte = low;
+                while rem > 0 {
+                    if byte == low {
+                        // first byte
+                        ts.append_all(quote! {
+                            let v = self.pdu[#byte] as #utype;
+                        });
+                        if rem < 8 {
+                            // single byte
+                            let mask = rem - 1;
+                            let shift = left + 1 - rem;
+                            ts.append_all(quote! {
+                                let mask: #utype = (1 << #mask)
+                                    | ((1 << #mask) - 1);
+                                let v = (v >> #shift) & mask;
+                            });
+                            rem = 0;
+                        } else {
+                            // first of multiple bytes
+                            let mask = left;
+                            let shift = rem - left - 1;
+                            if mask < 7 {
+                                ts.append_all(quote! {
+                                    let mask: #utype = (1 << #mask)
+                                        | ((1 << #mask) - 1);
+                                    let v = (v & mask) << #shift;
+                                });
+                            } else {
+                                ts.append_all(quote! {
+                                    let v = v << #shift;
+                                });
+                            }
+                            rem -= left + 1;
+                        }
+                        byte += 1;
+                    } else {
+                        if rem < 8 {
+                            // last byte: take top bits
+                            let shift = 8 - rem;
+                            ts.append_all(quote! {
+                                let v = v |
+                                ((self.pdu[#byte] as #utype) >> #shift);
+                            });
+                            rem = 0;
+                        } else {
+                            rem -= 8;
+                            ts.append_all(quote! {
+                                let v = v |
+                                ((self.pdu[#byte] as #utype) << #rem);
+                            });
+                            byte += 1;
+                        }
+                    };
+                }
+            }
+            // perform sign-extension for values with fewer bits than
+            // the storage type
+            if self.signed && self.width < self.nwidth {
+                let mask = self.width - 1;
+                ts.append_all(quote! {
+                    let mask: #utype = (1 << #mask);
+                    let v = if (v & mask) != 0 {
+                        let mask = mask | (mask - 1);
+                        v | !mask
+                    } else {
+                        v
+                    };
+                });
+            }
+            ts.append_all(quote! { v });
         }
+        quote! { { #ts } }
     }
 
     fn gen_decoder(&self) -> TokenStream {
@@ -163,13 +277,20 @@ impl<'a> SignalInfo<'a> {
             quote! {
                 self.#name = (self.pdu[#byte] & (1 << #bit)) != 0;
             }
-        } else if !self.is_float() {
-            let value = self.gen_bits();
-            quote! {
-                self.#name = #value;
-            }
         } else {
-            TokenStream::new()
+            let value = self.gen_bits();
+            let ntype = &self.ntype;
+            if !self.is_float() {
+                quote! {
+                    self.#name = #value as #ntype;
+                }
+            } else {
+                let scale = self.scale;
+                let offset = *self.signal.offset() as f32;
+                quote! {
+                    self.#name = ((#value as f32) * #scale) + #offset;
+                }
+            }
         }
     }
 
