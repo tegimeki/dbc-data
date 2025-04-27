@@ -9,8 +9,14 @@ repository = "https://gitlab.com/mfairman/dbc-data"
 license = "MIT"
 
 
+[lib]
+proc-macro = true
+
 [dev-dependencies]
 assert_hex = "0.4.1"
 
 [dependencies]
-dbc-data-derive = { path = "dbc-data-derive" }
+can-dbc = "6.0.0"
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full", "extra-traits"] }

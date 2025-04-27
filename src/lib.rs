@@ -29,7 +29,7 @@
 //!
 //!     assert_eq!(SomeMessage::ID, 1023);
 //!     assert_eq!(SomeMessage::DLC, 4);
-//!     assert!(t.some_message.decode(&[0x12, 0x34, 0x56, 0x78]).is_ok());
+//!     assert!(t.some_message.decode(&[0x12, 0x34, 0x56, 0x78]));
 //!     assert_eq!(t.some_message.Signed8, 0x12);
 //!     assert_eq!(t.some_message.Unsigned8, 0x34);
 //!     assert_eq!(t.some_message.Unsigned16, 0x5678); // big-endian
@@ -54,166 +54,454 @@
 //! - [ ] consider scoping generated types to a module
 //!
 //! # License
-//! (MIT)[/LICENSE-MIT)
+//! [LICENSE-MIT]
 //!
-#![no_std]
-pub use dbc_data_derive::*;
 
-/// Decode error type
-pub enum DecodeError {
-    /// The CAN ID is not known from the messages imported from the DBC
-    UnknownId,
-    /// The DLC (data length) is invalid for the message
-    InvalidDlc,
+//! DBC data derive macro
+extern crate proc_macro;
+use can_dbc::{ByteOrder, MessageId, Signal, ValueType, DBC};
+use proc_macro2::TokenStream;
+use quote::{quote, TokenStreamExt};
+use std::{collections::BTreeMap, fs::read};
+use syn::{
+    parse_macro_input, Attribute, Data, DeriveInput, Expr, Fields, Ident, Lit,
+    Meta, Result, Type,
+};
+
+struct DeriveData<'a> {
+    /// Name of the struct we are deriving for
+    #[allow(dead_code)]
+    name: &'a Ident,
+    /// The parsed DBC file
+    dbc: can_dbc::DBC,
+    /// All of the messages to derive
+    messages: BTreeMap<String, MessageInfo<'a>>,
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use assert_hex::assert_eq_hex;
+struct MessageInfo<'a> {
+    ident: &'a Ident,
+    attrs: &'a Vec<Attribute>,
+}
 
-    #[allow(dead_code)]
-    #[derive(DbcData, Default)]
-    #[dbc_file = "tests/test.dbc"]
-    struct Test {
-        aligned_ule: AlignedUnsignedLE,
-        unaligned_ule: UnalignedUnsignedLE,
-        unaligned_ube: UnalignedUnsignedBE,
-        unaligned_sle: UnalignedSignedLE,
-        unaligned_sbe: UnalignedSignedBE,
-        #[dbc_signals = "Bool_A, Bool_H, Float_A"]
-        misc: MiscMessage,
-        sixty_four_le: SixtyFourBitLE,
-        sixty_four_be: SixtyFourBitBE,
-        sixty_four_signed: SixtyFourBitSigned,
+/// Filter signals based on #[dbc_signals] list
+struct SignalFilter {
+    names: Vec<String>,
+}
+
+impl SignalFilter {
+    /// Create a signal filter from a message's attribute
+    fn new(message: &MessageInfo) -> Self {
+        let mut names: Vec<String> = vec![];
+        if let Some(attrs) = parse_attr(message.attrs, "dbc_signals") {
+            let list = attrs.split(",");
+            for name in list {
+                let name = name.trim();
+                names.push(name.to_string());
+            }
+        }
+        Self { names }
     }
 
-    #[test]
-    fn basic() {
-        let mut t = Test::default();
+    /// Return whether a signal should be used, i.e. whether it is
+    /// in the filter list or the list is empty
+    fn use_signal(&self, name: impl Into<String>) -> bool {
+        if self.names.is_empty() {
+            return true;
+        }
+        let name = name.into();
+        self.names.contains(&name)
+    }
+}
 
-        // invalid length
-        assert!(t.aligned_ule.decode(&[0x00]).is_err());
+/// Information about signal within message
+struct SignalInfo<'a> {
+    signal: &'a Signal,
+    ident: Ident,
+    ntype: Ident,
+    utype: Ident,
+    start: usize,
+    width: usize,
+    nwidth: usize,
+    scale: f32,
+    signed: bool,
+}
 
-        // message ID, DLC constants
-        assert_eq!(AlignedUnsignedLE::ID, 1023);
-        assert_eq!(AlignedUnsignedLE::DLC, 8);
-        assert_eq!(MiscMessage::ID, 8191);
-        assert_eq!(MiscMessage::DLC, 2);
+impl<'a> SignalInfo<'a> {
+    fn new(signal: &'a Signal, message: &MessageInfo) -> Self {
+        // TODO: sanitize and/or change name format
+        let name = signal.name();
+        let signed = matches!(signal.value_type(), ValueType::Signed);
+        let width = *signal.signal_size() as usize;
+        let scale = *signal.factor() as f32;
+
+        // get storage width of signal data
+        let nwidth = match width {
+            1 => 1,
+            2..=8 => 8,
+            9..=16 => 16,
+            17..=32 => 32,
+            _ => 64,
+        };
+
+        let utype = if width == 1 {
+            "bool"
+        } else {
+            &format!("{}{}", if signed { "i" } else { "u" }, nwidth)
+        };
+
+        // get native type for signal
+        let ntype = if scale == 1.0 { utype } else { "f32" };
+
+        Self {
+            signal,
+            ident: Ident::new(name, message.ident.span()),
+            ntype: Ident::new(ntype, message.ident.span()),
+            utype: Ident::new(utype, message.ident.span()),
+            start: *signal.start_bit() as usize,
+            scale,
+            signed,
+            width,
+            nwidth,
+        }
     }
 
-    #[test]
-    fn aligned_unsigned_le() {
-        let mut t = Test::default();
+    /// Generate the code for extracting signal bits
+    fn gen_bits(&self) -> TokenStream {
+        let low = self.start / 8;
+        let left = self.start % 8;
+        let high = (self.start + self.width - 1) / 8;
+        let right = (self.start + self.width) % 8;
+        let utype = &self.utype;
+        let le = self.signal.byte_order() == &ByteOrder::LittleEndian;
 
-        assert!(t
-            .aligned_ule
-            .decode(&[0xAA, 0x55, 0x01, 0x20, 0x34, 0x56, 0x78, 0x9A])
-            .is_ok());
-        assert_eq_hex!(t.aligned_ule.Unsigned8, 0x55);
-        assert_eq_hex!(t.aligned_ule.Unsigned16, 0x2001);
+        let mut ts = TokenStream::new();
+        if self.width == self.nwidth && left == 0 {
+            // aligned
+            let ext = if le {
+                Ident::new("from_le_bytes", utype.span())
+            } else {
+                Ident::new("from_be_bytes", utype.span())
+            };
+            let tokens = match self.width {
+                8 => quote! {
+                    #utype::#ext([pdu[#low]])
+                },
+                16 => quote! {
+                    #utype::#ext([pdu[#low],
+                                  pdu[#low + 1]])
+                },
+                32 => quote! {
+                    #utype::#ext([pdu[#low + 0],
+                                  pdu[#low + 1],
+                                  pdu[#low + 2],
+                                  pdu[#low + 3]])
+                },
+                // NOTE: this compiles to very small code and does not
+                // involve actually fetching 8 separate bytes; e.g. on
+                // armv7 an `ldrd` to get both 32-bit values followed by
+                // two `rev` instructions to reverse the bytes.
+                64 => quote! {
+                    #utype::#ext([pdu[#low + 0],
+                                  pdu[#low + 1],
+                                  pdu[#low + 2],
+                                  pdu[#low + 3],
+                                  pdu[#low + 4],
+                                  pdu[#low + 5],
+                                  pdu[#low + 6],
+                                  pdu[#low + 7],
+                    ])
+                },
+                _ => unimplemented!(),
+            };
+            ts.append_all(tokens);
+        } else {
+            if le {
+                let count = high - low;
+                for o in 0..=count {
+                    let byte = low + o;
+                    if o == 0 {
+                        // first byte
+                        ts.append_all(quote! {
+                            let v = pdu[#byte] as #utype;
+                        });
+                        if left != 0 {
+                            if count == 0 {
+                                ts.append_all(quote! {
+                                    let v = (v >> #left) & ((1 << #left) - 1);
+                                });
+                            } else {
+                                ts.append_all(quote! {
+                                    let v = v >> #left;
+                                });
+                            }
+                        }
+                    } else {
+                        let shift = (o * 8) - left;
+                        if o == count && right != 0 {
+                            ts.append_all(quote! {
+                                let v = v | (((pdu[#byte]
+                                               & ((1 << #right) - 1))
+                                              as #utype) << #shift);
+                            });
+                        } else {
+                            ts.append_all(quote! {
+                                let v = v | ((pdu[#byte] as #utype) << #shift);
+                            });
+                        }
+                    }
+                }
+            } else {
+                // big-endian
+                let mut rem = self.width;
+                let mut byte = low;
+                while rem > 0 {
+                    if byte == low {
+                        // first byte
+                        ts.append_all(quote! {
+                            let v = pdu[#byte] as #utype;
+                        });
+                        if rem < 8 {
+                            // single byte
+                            let mask = rem - 1;
+                            let shift = left + 1 - rem;
+                            ts.append_all(quote! {
+                                let mask: #utype = (1 << #mask)
+                                    | ((1 << #mask) - 1);
+                                let v = (v >> #shift) & mask;
+                            });
+                            rem = 0;
+                        } else {
+                            // first of multiple bytes
+                            let mask = left;
+                            let shift = rem - left - 1;
+                            if mask < 7 {
+                                ts.append_all(quote! {
+                                    let mask: #utype = (1 << #mask)
+                                        | ((1 << #mask) - 1);
+                                    let v = (v & mask) << #shift;
+                                });
+                            } else {
+                                ts.append_all(quote! {
+                                    let v = v << #shift;
+                                });
+                            }
+                            rem -= left + 1;
+                        }
+                        byte += 1;
+                    } else {
+                        if rem < 8 {
+                            // last byte: take top bits
+                            let shift = 8 - rem;
+                            ts.append_all(quote! {
+                                let v = v |
+                                ((pdu[#byte] as #utype) >> #shift);
+                            });
+                            rem = 0;
+                        } else {
+                            rem -= 8;
+                            ts.append_all(quote! {
+                                let v = v |
+                                ((pdu[#byte] as #utype) << #rem);
+                            });
+                            byte += 1;
+                        }
+                    };
+                }
+            }
+            // perform sign-extension for values with fewer bits than
+            // the storage type
+            if self.signed && self.width < self.nwidth {
+                let mask = self.width - 1;
+                ts.append_all(quote! {
+                    let mask: #utype = (1 << #mask);
+                    let v = if (v & mask) != 0 {
+                        let mask = mask | (mask - 1);
+                        v | !mask
+                    } else {
+                        v
+                    };
+                });
+            }
+            ts.append_all(quote! { v });
+        }
+        quote! { { #ts } }
     }
 
-    #[test]
-    fn unaligned_unsigned_le() {
-        let mut t = Test::default();
-
-        // various unaligned values
-        assert!(t
-            .unaligned_ule
-            .decode(&[0xF7, 0x70, 0x20, 0x31, 0xf0, 0xa1, 0x73, 0xfd])
-            .is_ok());
-        assert_eq_hex!(t.unaligned_ule.Unsigned15, 0x2E74);
-        assert_eq_hex!(t.unaligned_ule.Unsigned23, 0x7C0C48);
-        assert_eq_hex!(t.unaligned_ule.Unsigned3, 6u8);
+    fn gen_decoder(&self) -> TokenStream {
+        let name = &self.ident;
+        if self.width == 1 {
+            // boolean
+            let byte = self.start / 8;
+            let bit = self.start % 8;
+            quote! {
+                self.#name = (pdu[#byte] & (1 << #bit)) != 0;
+            }
+        } else {
+            let value = self.gen_bits();
+            let ntype = &self.ntype;
+            if !self.is_float() {
+                quote! {
+                    self.#name = #value as #ntype;
+                }
+            } else {
+                let scale = self.scale;
+                let offset = *self.signal.offset() as f32;
+                quote! {
+                    self.#name = ((#value as f32) * #scale) + #offset;
+                }
+            }
+        }
     }
 
-    #[test]
-    fn unaligned_unsigned_be() {
-        let mut t = Test::default();
+    fn is_float(&self) -> bool {
+        self.scale != 1.0
+    }
+}
 
-        // various unaligned values
-        assert!(t
-            .unaligned_ube
-            .decode(&[0xfd, 0xe5, 0xa1, 0xf0, 0x31, 0xf8, 0x70, 0x77])
-            .is_ok());
-        assert_eq_hex!(t.unaligned_ube.Unsigned3, 2u8);
-        assert_eq_hex!(t.unaligned_ube.Unsigned15, 0x4383);
-        assert_eq_hex!(t.unaligned_ube.Unsigned23, 0x1F031F);
+impl<'a> DeriveData<'a> {
+    fn from(input: &'a DeriveInput) -> Result<Self> {
+        // load the DBC file
+        let dbc_file = parse_attr(&input.attrs, "dbc_file")
+            .expect("No DBC file specified");
+        let contents = read(&dbc_file).expect("Could not read DBC");
+        let dbc = DBC::from_slice(&contents).expect("Could not parse DBC");
+
+        // gather all of the messages and associated attributes
+        let mut messages: BTreeMap<String, MessageInfo<'_>> =
+            Default::default();
+        match &input.data {
+            Data::Struct(data) => match &data.fields {
+                Fields::Named(fields) => {
+                    for field in &fields.named {
+                        let stype = match &field.ty {
+                            Type::Path(v) => v,
+                            _ => unimplemented!(),
+                        };
+                        let ident = &stype.path.segments[0].ident;
+                        messages.insert(
+                            ident.to_string(),
+                            MessageInfo {
+                                ident,
+                                attrs: &field.attrs,
+                            },
+                        );
+                    }
+                }
+                Fields::Unnamed(_) | Fields::Unit => unimplemented!(),
+            },
+            _ => unimplemented!(),
+        }
+
+        Ok(Self {
+            name: &input.ident,
+            dbc,
+            messages,
+        })
     }
 
-    #[test]
-    fn unaligned_signed_le() {
-        let mut t = Test::default();
+    fn build(self) -> TokenStream {
+        let mut out = TokenStream::new();
 
-        // various unaligned values
-        assert!(t
-            .unaligned_sle
-            .decode(&[0xF7, 0x70, 0x20, 0x31, 0xf0, 0xa1, 0x73, 0xfd])
-            .is_ok());
-        assert_eq_hex!(t.unaligned_sle.Signed15, 0x2E74);
-        assert_eq_hex!(t.unaligned_sle.Signed23, 0xFFFC0C48u32 as i32);
-        assert_eq!(t.unaligned_sle.Signed3, -2);
+        for (name, message) in self.messages.iter() {
+            let m = self
+                .dbc
+                .messages()
+                .iter()
+                .find(|m| *m.message_name() == *name)
+                .unwrap_or_else(|| panic!("Unknown message {name}"));
+
+            let filter = SignalFilter::new(message);
+
+            let mut signals: Vec<Ident> = vec![];
+            let mut types: Vec<Ident> = vec![];
+            let mut infos: Vec<SignalInfo> = vec![];
+            for s in m.signals().iter() {
+                if !filter.use_signal(s.name()) {
+                    continue;
+                }
+
+                let signal = SignalInfo::new(s, message);
+                signals.push(signal.ident.clone());
+                types.push(signal.ntype.clone());
+                infos.push(signal);
+            }
+
+            let (id, extended) = match *m.message_id() {
+                MessageId::Standard(id) => (id as u32, false),
+                MessageId::Extended(id) => (id, true),
+            };
+
+            let dlc = *m.message_size() as usize;
+            let dlc8 = dlc as u8;
+            let ident = message.ident;
+
+            // build signal decoders
+            let mut decoders = TokenStream::new();
+            for info in infos.iter() {
+                decoders.append_all(info.gen_decoder());
+            }
+
+            out.append_all(quote! {
+                #[allow(dead_code)]
+                #[allow(non_snake_case)]
+                #[derive(Default)]
+                pub struct #ident {
+                    #(
+                        pub #signals: #types
+                    ),*
+                }
+
+                impl #ident {
+                    const ID: u32 = #id;
+                    const DLC: u8 = #dlc8;
+                    const EXTENDED: bool = #extended;
+
+                    pub fn decode(&mut self, pdu: &[u8])
+                                  -> bool {
+                        if pdu.len() != #dlc {
+                            return false
+                        }
+                        #decoders
+                        true
+                    }
+                }
+            });
+        }
+        out
     }
+}
 
-    #[test]
-    fn unaligned_signed_be() {
-        let mut t = Test::default();
+#[proc_macro_derive(DbcData, attributes(dbc_file, dbc_signals))]
+pub fn dbc_data_derive(
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    derive_data(&parse_macro_input!(input as DeriveInput))
+        .unwrap_or_else(|err| err.to_compile_error())
+        .into()
+}
 
-        // various unaligned values
-        assert!(t
-            .unaligned_sbe
-            .decode(&[0xfd, 0xe5, 0xa1, 0xf0, 0x31, 0xf8, 0x70, 0x77])
-            .is_ok());
-        assert_eq_hex!(t.unaligned_sbe.Signed3, 2);
-        assert_eq_hex!(t.unaligned_sbe.Signed15, 0xC383u16 as i16);
-        assert_eq_hex!(t.unaligned_sbe.Signed23, 0x1F031F);
-    }
+fn derive_data(input: &DeriveInput) -> Result<TokenStream> {
+    Ok(DeriveData::from(input)?.build())
+}
 
-    #[test]
-    fn misc() {
-        let mut t = Test::default();
+fn parse_attr(attrs: &[Attribute], name: &str) -> Option<String> {
+    let attr = attrs
+        .iter()
+        .filter(|a| {
+            a.path().segments.len() == 1 && a.path().segments[0].ident == name
+        })
+        .nth(0)?;
 
-        // booleans
-        assert!(t.misc.decode(&[0x82, 0x20]).is_ok());
-        assert!(!t.misc.Bool_A);
-        assert!(t.misc.Bool_H);
-        assert_eq!(t.misc.Float_A, 16.25);
-    }
+    let expr = match &attr.meta {
+        Meta::NameValue(n) => Some(&n.value),
+        _ => None,
+    };
 
-    #[test]
-    fn sixty_four_bit() {
-        let mut t = Test::default();
-
-        // 64-bit unsigned little-endian
-        assert!(t
-            .sixty_four_le
-            .decode(&[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88])
-            .is_ok());
-
-        assert_eq!(t.sixty_four_le.SixtyFour, 0x8877665544332211);
-
-        // 64-bit unsigned big-endian
-        assert!(t
-            .sixty_four_be
-            .decode(&[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88])
-            .is_ok());
-
-        assert_eq_hex!(t.sixty_four_be.SixtyFour, 0x1122334455667788);
-
-        // 64-bit signed little-endian
-        assert!(t
-            .sixty_four_signed
-            .decode(&[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88])
-            .is_ok());
-
-        assert_eq!(t.sixty_four_signed.SixtyFour, -8613303245920329199);
-    }
-
-    #[test]
-    fn extract() {
-        let data: [u8; 1] = [0x87u8];
-        let value = i8::from_le_bytes(data);
-        assert_eq!(value, -121);
+    match &expr {
+        Some(Expr::Lit(e)) => match &e.lit {
+            Lit::Str(s) => Some(s.value()),
+            _ => None,
+        },
+        _ => None,
     }
 }

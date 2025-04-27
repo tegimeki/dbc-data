@@ -1,4 +1,4 @@
-# dbc-data
+# dbc-data ![License: MIT](https://img.shields.io/badge/license-MIT-blue) [![dbc-data on crates.io](https://img.shields.io/crates/v/dbc-data)](https://crates.io/crates/dbc-data) [![dbc-data on docs.rs](https://docs.rs/dbc-data/badge.svg)](https://docs.rs/dbc-data) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitLab-blue?logo=GitLab)](https://gitlab.com/mfairman/dbc-data)
 
 A derive-macro which produces code to access signals within CAN
 messages, as described by a `.dbc` file.  The generated code has
@@ -61,4 +61,7 @@ See the test cases in this crate for examples of usage.
 
 ## License
 
-[MIT](/LICENSE-MIT)
+[LICENSE-MIT][__link0]
+
+
+ [__link0]: LICENSE-MIT
