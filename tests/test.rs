@@ -42,6 +42,14 @@ mod test {
             .decode(&[0xAA, 0x55, 0x01, 0x20, 0x34, 0x56, 0x78, 0x9A]));
         assert_eq_hex!(t.aligned_ule.Unsigned8, 0x55);
         assert_eq_hex!(t.aligned_ule.Unsigned16, 0x2001);
+
+        let mut pdu: [u8; 8] = [0u8; 8];
+        t.aligned_ule.Unsigned8 = 0x33;
+        t.aligned_ule.Unsigned16 = 0x78bc;
+        assert!(t.aligned_ule.encode(pdu.as_mut_slice()));
+        assert_eq_hex!(pdu[1], 0x33);
+        assert_eq_hex!(pdu[2], 0xbc);
+        assert_eq_hex!(pdu[3], 0x78);
     }
 
     #[test]
@@ -105,6 +113,13 @@ mod test {
         assert!(!t.misc.Bool_A);
         assert!(t.misc.Bool_H);
         assert_eq!(t.misc.Float_A, 16.25);
+
+        let mut pdu: [u8; 2] = [0u8; 2];
+        t.misc.Bool_A = true;
+        t.misc.Float_A = 20.75;
+        assert!(t.misc.encode(pdu.as_mut_slice()));
+        assert_eq_hex!(pdu[0], 0x81);
+        assert_eq_hex!(pdu[1], 0x29);
     }
 
     #[test]
