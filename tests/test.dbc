@@ -11,6 +11,11 @@ BO_ 1023 AlignedUnsignedLE: 8 Ecu1
  SG_ Unsigned16 : 16|16@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Unsigned8 : 8|8@1+ (1,0) [0|0] "" Vector__XXX
 
+BO_ 1023 AlignedUnsignedBE: 8 Ecu1
+ SG_ Unsigned32 : 39|32@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Unsigned16 : 23|16@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Unsigned8 : 15|8@0+ (1,0) [0|0] "" Vector__XXX
+
 BO_ 1025 UnalignedUnsignedLE: 8 Ecu1
  SG_ Unsigned15 : 43|15@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Unsigned23 : 18|23@1+ (1,0) [0|0] "" Vector__XXX
@@ -45,3 +50,10 @@ BO_ 65 SixtyFourBitBE: 8 Ecu2
 
 BO_ 66 SixtyFourBitSigned: 8 Ecu2
  SG_ SixtyFour : 0|64@1- (1,0) [0|0] "" Vector_XXX
+
+BA_DEF_DEF_  "GenMsgSendType" "";
+BA_DEF_DEF_  "GenMsgDelayTime" 0;
+BA_DEF_DEF_  "GenMsgCycleTime" 0;
+
+BA_ "GenMsgCycleTime" BO_ 8191 100;
+BA_ "GenMsgCycleTime" BO_ 66 2000;

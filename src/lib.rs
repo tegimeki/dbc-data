@@ -35,37 +35,59 @@
 //!     assert_eq!(t.some_message.Unsigned16, 0x5678); // big-endian
 //! }
 //! ```
+//! See the test cases in this crate for examples of usage.
 //!
-//! As `.dbc` files may contain multiple messages, each of these can be
-//! brought into scope by referencing their name as a type (e.g. `SomeMessage`
-//! as shown above) and this determines what code is generated.  Messages
-//! not referenced will not generate any code.
+//! # Code Generation
+//! This crate is aimed at embedded systems where typically some
+//! subset of the messages and signals defined in the `.dbc` file are
+//! of interest, and the rest can be ignored for a minimal footpint.
+//! If you need to decode the entire DBC into rich (possibly `std`-dependent)
+//! types to run on a host system, there are other crates for that
+//! such as `dbc_codegen`.
 //!
+//! ## Messages
+//! As `.dbc` files typically contain multiple messages, each of these
+//! can be brought into scope by referencing their name as a type
+//! (e.g. `SomeMessage` as shown above) and this determines what code
+//! is generated.  Messages not referenced will not generate any code.
+//!
+//! # Signals
 //! For cases where only certain signals within a message are needed, the
 //! `#[dbc_signals]` attribute lets you specify which ones are used.
 //!
-//! See the test cases in this crate for examples of usage.
+//! ## Types
+//! Single-bit signals generate `bool` types, and signals with a scale factor
+//! generate `f32` types.  All other signals generate signed or unsigned
+//! native types which are large enough to fit the contained values, e.g.
+//! 13-bit signals will be stored in a `u16` and 17-bit signals will be
+//! stored in a `u32`.
 //!
 //! # Functionality
-//! * [x] decode signals from PDU
-//! * [ ] encode signals into PDU
-//! - [ ] generate dispatcher for decoding based on ID
-//! - [ ] support multiplexed signals
-//! - [ ] consider scoping generated types to a module
+//! * Decode signals from PDU into native types
+//!     * const definitions for `ID: u32`, `DLC: u8`, `EXTENDED: bool`,
+//! and `CYCLE_TIME: usize` when present
+//! * Encode signal into PDU (except unaligned BE)
+//!
+//! # TODO
+//! * Encode unabled BE signals
+//! * Generate dispatcher for decoding based on ID
+//! * Support multiplexed signals
+//! * (Maybe) scope generated types to a module
 //!
 //! # License
 //! [LICENSE-MIT]
 //!
 
-//! DBC data derive macro
 extern crate proc_macro;
-use can_dbc::{ByteOrder, MessageId, Signal, ValueType, DBC};
+use can_dbc::{
+    AttributeValuedForObjectType, ByteOrder, MessageId, Signal, ValueType, DBC,
+};
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 use std::{collections::BTreeMap, fs::read};
 use syn::{
-    parse_macro_input, Attribute, Data, DeriveInput, Expr, Fields, Ident, Lit,
-    Meta, Result, Type,
+    parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Expr,
+    Field, Fields, Ident, Lit, Meta, Result, Type,
 };
 
 struct DeriveData<'a> {
@@ -79,8 +101,12 @@ struct DeriveData<'a> {
 }
 
 struct MessageInfo<'a> {
+    id: u32,
+    extended: bool,
+    index: usize,
     ident: &'a Ident,
     attrs: &'a Vec<Attribute>,
+    cycle_time: Option<usize>,
 }
 
 /// Filter signals based on #[dbc_signals] list
@@ -166,7 +192,7 @@ impl<'a> SignalInfo<'a> {
     }
 
     /// Generate the code for extracting signal bits
-    fn gen_bits(&self) -> TokenStream {
+    fn extract_bits(&self) -> TokenStream {
         let low = self.start / 8;
         let left = self.start % 8;
         let high = (self.start + self.width - 1) / 8;
@@ -337,7 +363,7 @@ impl<'a> SignalInfo<'a> {
                 self.#name = (pdu[#byte] & (1 << #bit)) != 0;
             }
         } else {
-            let value = self.gen_bits();
+            let value = self.extract_bits();
             let ntype = &self.ntype;
             if !self.is_float() {
                 quote! {
@@ -353,8 +379,176 @@ impl<'a> SignalInfo<'a> {
         }
     }
 
+    fn gen_encoder(&self) -> TokenStream {
+        let name = &self.ident;
+        let low = self.start / 8;
+        let mut byte = low;
+        let bit = self.start % 8;
+        if self.width == 1 {
+            // boolean
+            quote! {
+                let mask: u8 = (1 << #bit);
+                if self.#name {
+                    pdu[#byte] |= mask;
+                } else {
+                    pdu[#byte] &= !mask;
+                }
+            }
+        } else {
+            let utype = &self.utype;
+            let left = self.start % 8;
+            // let right = (self.start + self.width) % 8;
+            let le = self.signal.byte_order() == &ByteOrder::LittleEndian;
+
+            let mut ts = TokenStream::new();
+            if self.is_float() {
+                let scale = self.scale;
+                let offset = self.signal.offset as f32;
+                ts.append_all(quote! {
+                    let v = ((self.#name - #offset) / #scale) as #utype;
+                });
+            } else {
+                ts.append_all(quote! {
+                    let v = self.#name;
+                });
+            }
+            if le {
+                if self.width == self.nwidth && left == 0 {
+                    // aligned little-endian
+                    let mut bits = self.nwidth;
+                    let mut shift = 0;
+                    while bits >= 8 {
+                        ts.append_all(quote! {
+                            pdu[#byte] = ((v >> #shift) as u8) & 0xff;
+                        });
+                        bits -= 8;
+                        byte += 1;
+                        shift += 8;
+                    }
+                } else {
+                    // unaligned little-endian
+                    let mut rem = self.width;
+                    let mut lshift = left;
+                    let mut rshift = 0;
+                    while rem > 0 {
+                        if rem < 8 {
+                            let mask: u8 = (1 << rem) - 1;
+                            let mask = mask << lshift;
+                            ts.append_all(quote! {
+                                pdu[#byte] = (pdu[#byte] & !#mask) |
+                                ((((v >> #rshift) << (#lshift)) as u8) & #mask);
+                            });
+                            break;
+                        }
+
+                        if lshift != 0 {
+                            let mask: u8 = (1 << (8 - left)) - 1;
+                            let mask = mask << lshift;
+                            ts.append_all(quote! {
+                                pdu[#byte] = (pdu[#byte] & !#mask) |
+                                ((((v >> #rshift) << (#lshift)) as u8) & #mask);
+                            });
+                        } else {
+                            ts.append_all(quote! {
+                                pdu[#byte] = ((v >> #rshift) & 0xff) as u8;
+                            });
+                        }
+
+                        if byte == low {
+                            rem -= 8 - left;
+                            rshift += 8 - left;
+                        } else {
+                            rem -= 8;
+                            rshift += 8;
+                        }
+                        byte += 1;
+                        lshift = 0;
+                    }
+                }
+            } else {
+                if self.width == self.nwidth && left == 7 {
+                    // aligned big-endian
+                    let mut bits = self.nwidth;
+                    let mut shift = bits - 8;
+                    let mut byte = (self.start - 7) / 8;
+                    while bits >= 8 {
+                        ts.append_all(quote! {
+                            pdu[#byte] = ((v >> #shift) as u8) & 0xff;
+                        });
+                        bits -= 8;
+                        byte += 1;
+                        if shift >= 8 {
+                            shift -= 8;
+                        }
+                    }
+                } else {
+                    // unaligned big-endian
+                }
+            }
+            ts
+        }
+    }
+
     fn is_float(&self) -> bool {
         self.scale != 1.0
+    }
+}
+
+impl<'a> MessageInfo<'a> {
+    fn new(dbc: &DBC, field: &'a Field) -> Option<Self> {
+        let stype = match &field.ty {
+            Type::Path(v) => v,
+            _ => unimplemented!(),
+        };
+        let ident = &stype.path.segments[0].ident;
+        let name = ident.to_string();
+
+        for (index, message) in dbc.messages().iter().enumerate() {
+            if message.message_name() == &name {
+                let id = message.message_id();
+                let (id32, extended) = match *id {
+                    MessageId::Standard(id) => (id as u32, false),
+                    MessageId::Extended(id) => (id, true),
+                };
+                let mut cycle_time: Option<usize> = None;
+                for attr in dbc.attribute_values().iter() {
+                    let value = attr.attribute_value();
+                    use AttributeValuedForObjectType as AV;
+                    match value {
+                        AV::MessageDefinitionAttributeValue(aid, Some(av)) => {
+                            if aid == id
+                                && attr.attribute_name() == "GenMsgCycleTime"
+                            {
+                                cycle_time = Some(Self::attr_value(av));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                return Some(Self {
+                    id: id32,
+                    extended,
+                    index,
+                    ident,
+                    cycle_time,
+                    attrs: &field.attrs,
+                });
+            }
+        }
+        None
+    }
+
+    // TODO: revisit this to handle type conversion better; we
+    // expect that the value fits in a usize for e.g. GenMsgCycleTime
+    fn attr_value(v: &can_dbc::AttributeValue) -> usize {
+        use can_dbc::AttributeValue as AV;
+        match v {
+            AV::AttributeValueU64(x) => *x as usize,
+            AV::AttributeValueI64(x) => *x as usize,
+            AV::AttributeValueF64(x) => *x as usize,
+            AV::AttributeValueCharString(_) => 0usize, // TODO: parse as int?
+        }
     }
 }
 
@@ -373,18 +567,14 @@ impl<'a> DeriveData<'a> {
             Data::Struct(data) => match &data.fields {
                 Fields::Named(fields) => {
                     for field in &fields.named {
-                        let stype = match &field.ty {
-                            Type::Path(v) => v,
-                            _ => unimplemented!(),
-                        };
-                        let ident = &stype.path.segments[0].ident;
-                        messages.insert(
-                            ident.to_string(),
-                            MessageInfo {
-                                ident,
-                                attrs: &field.attrs,
-                            },
-                        );
+                        if let Some(info) = MessageInfo::new(&dbc, &field) {
+                            messages.insert(info.ident.to_string(), info);
+                        } else {
+                            return Err(syn::Error::new(
+                                field.span(),
+                                format!("Unknown message"),
+                            ));
+                        }
                     }
                 }
                 Fields::Unnamed(_) | Fields::Unit => unimplemented!(),
@@ -406,8 +596,7 @@ impl<'a> DeriveData<'a> {
             let m = self
                 .dbc
                 .messages()
-                .iter()
-                .find(|m| *m.message_name() == *name)
+                .get(message.index)
                 .unwrap_or_else(|| panic!("Unknown message {name}"));
 
             let filter = SignalFilter::new(message);
@@ -426,20 +615,27 @@ impl<'a> DeriveData<'a> {
                 infos.push(signal);
             }
 
-            let (id, extended) = match *m.message_id() {
-                MessageId::Standard(id) => (id as u32, false),
-                MessageId::Extended(id) => (id, true),
-            };
+            let id = message.id;
+            let extended = message.extended;
 
             let dlc = *m.message_size() as usize;
             let dlc8 = dlc as u8;
             let ident = message.ident;
 
-            // build signal decoders
+            // build signal decoders and encoders
             let mut decoders = TokenStream::new();
+            let mut encoders = TokenStream::new();
             for info in infos.iter() {
                 decoders.append_all(info.gen_decoder());
+                encoders.append_all(info.gen_encoder());
             }
+            let cycle_time = if let Some(c) = message.cycle_time {
+                quote! {
+                    const CYCLE_TIME: usize = #c;
+                }
+            } else {
+                quote! {}
+            };
 
             out.append_all(quote! {
                 #[allow(dead_code)]
@@ -455,6 +651,7 @@ impl<'a> DeriveData<'a> {
                     const ID: u32 = #id;
                     const DLC: u8 = #dlc8;
                     const EXTENDED: bool = #extended;
+                    #cycle_time
 
                     pub fn decode(&mut self, pdu: &[u8])
                                   -> bool {
@@ -462,6 +659,15 @@ impl<'a> DeriveData<'a> {
                             return false
                         }
                         #decoders
+                        true
+                    }
+
+                    pub fn encode(&mut self, pdu: &mut [u8])
+                                  -> bool {
+                        if pdu.len() != #dlc {
+                            return false
+                        }
+                        #encoders
                         true
                     }
                 }

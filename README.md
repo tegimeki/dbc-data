@@ -33,31 +33,57 @@ fn test() {
 
     assert_eq!(SomeMessage::ID, 1023);
     assert_eq!(SomeMessage::DLC, 4);
-    assert!(t.some_message.decode(&[0x12, 0x34, 0x56, 0x78]).is_ok());
+    assert!(t.some_message.decode(&[0x12, 0x34, 0x56, 0x78]));
     assert_eq!(t.some_message.Signed8, 0x12);
     assert_eq!(t.some_message.Unsigned8, 0x34);
     assert_eq!(t.some_message.Unsigned16, 0x5678); // big-endian
 }
 ```
 
-As `.dbc` files may contain multiple messages, each of these can be
-brought into scope by referencing their name as a type (e.g. `SomeMessage`
-as shown above) and this determines what code is generated.  Messages
-not referenced will not generate any code.
+See the test cases in this crate for examples of usage.
+
+## Code Generation
+
+This crate is aimed at embedded systems where typically some
+subset of the messages and signals defined in the `.dbc` file are
+of interest, and the rest can be ignored for a minimal footpint.
+If you need to decode the entire DBC into rich (possibly `std`-dependent)
+types to run on a host system, there are other crates for that
+such as `dbc_codegen`.
+
+### Messages
+
+As `.dbc` files typically contain multiple messages, each of these
+can be brought into scope by referencing their name as a type
+(e.g. `SomeMessage` as shown above) and this determines what code
+is generated.  Messages not referenced will not generate any code.
+
+## Signals
 
 For cases where only certain signals within a message are needed, the
 `#[dbc_signals]` attribute lets you specify which ones are used.
 
-See the test cases in this crate for examples of usage.
+### Types
+
+Single-bit signals generate `bool` types, and signals with a scale factor
+generate `f32` types.  All other signals generate signed or unsigned
+native types which are large enough to fit the contained values, e.g.
+13-bit signals will be stored in a `u16` and 17-bit signals will be
+stored in a `u32`.
 
 ## Functionality
 
-* [x] decode signals from PDU
-* [ ] encode signals into PDU
+* Decode signals from PDU into native types
+  * const definitions for `ID: u32`, `DLC: u8`, `EXTENDED: bool`,
+    and `CYCLE_TIME: usize` when present
+* Encode signal into PDU (except unaligned BE)
 
-* [ ] generate dispatcher for decoding based on ID
-* [ ] support multiplexed signals
-* [ ] consider scoping generated types to a module
+## TODO
+
+* Encode unabled BE signals
+* Generate dispatcher for decoding based on ID
+* Support multiplexed signals
+* (Maybe) scope generated types to a module
 
 ## License
 
