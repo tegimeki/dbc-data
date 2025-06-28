@@ -18,6 +18,7 @@ mod test {
         sixty_four_le: SixtyFourBitLE,
         sixty_four_be: SixtyFourBitBE,
         sixty_four_signed: SixtyFourBitSigned,
+        grouped: [GroupData1; 3],
     }
 
     #[test]
@@ -187,5 +188,13 @@ mod test {
         let data: [u8; 1] = [0x87u8];
         let value = i8::from_le_bytes(data);
         assert_eq!(value, -121);
+    }
+
+    #[test]
+    fn grouped() {
+        let mut t = Test::default();
+        assert!(t.grouped[0]
+            .decode(&[0xAA, 0x55, 0x01, 0x20, 0x34, 0x56, 0x78, 0x9A]));
+        assert!(t.grouped[0].ValueA == 0x200155AA);
     }
 }

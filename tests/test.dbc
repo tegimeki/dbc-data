@@ -51,6 +51,18 @@ BO_ 65 SixtyFourBitBE: 8 Ecu2
 BO_ 66 SixtyFourBitSigned: 8 Ecu2
  SG_ SixtyFour : 0|64@1- (1,0) [0|0] "" Vector_XXX
 
+BO_ 128 GroupData1: 8 Ecu1
+ SG_ ValueA : 0|32@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ ValueB : 32|32@1+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 129 GroupData2: 8 Ecu1
+ SG_ ValueA : 0|32@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ ValueB : 32|32@1+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 130 GroupData3: 8 Ecu1
+ SG_ ValueA : 0|32@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ ValueB : 32|32@1+ (1,0) [0|0] "" Vector__XXX
+
 BA_DEF_DEF_  "GenMsgSendType" "";
 BA_DEF_DEF_  "GenMsgDelayTime" 0;
 BA_DEF_DEF_  "GenMsgCycleTime" 0;

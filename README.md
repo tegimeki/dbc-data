@@ -5,6 +5,10 @@ messages, as described by a `.dbc` file.  The generated code has
 very few dependencies: just core primitives and `[u8]` slices, and
 is `#[no_std]` compatible.
 
+## Changelog
+
+[CHANGELOG.md][__link0]
+
 ## Example
 
 Given a `.dbc` file containing:
@@ -58,6 +62,10 @@ can be brought into scope by referencing their name as a type
 (e.g. `SomeMessage` as shown above) and this determines what code
 is generated.  Messages not referenced will not generate any code.
 
+When a range of message IDs contain the same signals, such as a
+series of readings which do not fit into a single message, then
+declaring an array will allow that type to be used for all of them.
+
 ## Signals
 
 For cases where only certain signals within a message are needed, the
@@ -80,14 +88,16 @@ stored in a `u32`.
 
 ## TODO
 
-* Encode unabled BE signals
-* Generate dispatcher for decoding based on ID
+* Encode unaligned BE signals
+* Generate dispatcher for decoding based on ID (including ranges)
+* Enforce that arrays of messages contain the same signals
 * Support multiplexed signals
 * (Maybe) scope generated types to a module
 
 ## License
 
-[LICENSE-MIT][__link0]
+[LICENSE-MIT][__link1]
 
 
- [__link0]: LICENSE-MIT
+ [__link0]: CHANGELOG.md
+ [__link1]: LICENSE-MIT

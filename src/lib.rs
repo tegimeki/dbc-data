@@ -3,6 +3,9 @@
 //! very few dependencies: just core primitives and `[u8]` slices, and
 //! is `#[no_std]` compatible.
 //!
+//! # Changelog
+//! [CHANGELOG.md]
+//!
 //! # Example
 //! Given a `.dbc` file containing:
 //!
@@ -51,6 +54,10 @@
 //! (e.g. `SomeMessage` as shown above) and this determines what code
 //! is generated.  Messages not referenced will not generate any code.
 //!
+//! When a range of message IDs contain the same signals, such as a
+//! series of readings which do not fit into a single message, then
+//! declaring an array will allow that type to be used for all of them.
+//!
 //! # Signals
 //! For cases where only certain signals within a message are needed, the
 //! `#[dbc_signals]` attribute lets you specify which ones are used.
@@ -65,12 +72,13 @@
 //! # Functionality
 //! * Decode signals from PDU into native types
 //!     * const definitions for `ID: u32`, `DLC: u8`, `EXTENDED: bool`,
-//! and `CYCLE_TIME: usize` when present
+//!       and `CYCLE_TIME: usize` when present
 //! * Encode signal into PDU (except unaligned BE)
 //!
 //! # TODO
-//! * Encode unabled BE signals
-//! * Generate dispatcher for decoding based on ID
+//! * Encode unaligned BE signals
+//! * Generate dispatcher for decoding based on ID (including ranges)
+//! * Enforce that arrays of messages contain the same signals
 //! * Support multiplexed signals
 //! * (Maybe) scope generated types to a module
 //!
@@ -483,6 +491,7 @@ impl<'a> SignalInfo<'a> {
                     }
                 } else {
                     // unaligned big-endian
+                    //                    todo!();
                 }
             }
             ts
@@ -498,6 +507,11 @@ impl<'a> MessageInfo<'a> {
     fn new(dbc: &DBC, field: &'a Field) -> Option<Self> {
         let stype = match &field.ty {
             Type::Path(v) => v,
+            Type::Array(a) => match *a.elem {
+                // TODO: validate that all signals match in ID range
+                Type::Path(ref v) => v,
+                _ => unimplemented!(),
+            },
             _ => unimplemented!(),
         };
         let ident = &stype.path.segments[0].ident;
@@ -567,12 +581,12 @@ impl<'a> DeriveData<'a> {
             Data::Struct(data) => match &data.fields {
                 Fields::Named(fields) => {
                     for field in &fields.named {
-                        if let Some(info) = MessageInfo::new(&dbc, &field) {
+                        if let Some(info) = MessageInfo::new(&dbc, field) {
                             messages.insert(info.ident.to_string(), info);
                         } else {
                             return Err(syn::Error::new(
                                 field.span(),
-                                format!("Unknown message"),
+                                "Unknown message",
                             ));
                         }
                     }
