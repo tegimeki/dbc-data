@@ -80,6 +80,7 @@
 //! * Generate dispatcher for decoding based on ID (including ranges)
 //! * Enforce that arrays of messages contain the same signals
 //! * Support multiplexed signals
+//! * Emit `enum`s for value-tables, with optional type association
 //! * (Maybe) scope generated types to a module
 //!
 //! # License
@@ -572,7 +573,19 @@ impl<'a> DeriveData<'a> {
         let dbc_file = parse_attr(&input.attrs, "dbc_file")
             .expect("No DBC file specified");
         let contents = read(&dbc_file).expect("Could not read DBC");
-        let dbc = DBC::from_slice(&contents).expect("Could not parse DBC");
+        let dbc = match DBC::from_slice(&contents) {
+            Ok(dbc) => dbc,
+            Err(can_dbc::Error::Incomplete(dbc, _)) => {
+                // TODO: emit an actual compiler warning
+                eprintln!(
+                    "Warning: DBC load incomplete; some data may be missing"
+                );
+                dbc
+            }
+            Err(_) => {
+                panic!("Unable to parse {dbc_file}");
+            }
+        };
 
         // gather all of the messages and associated attributes
         let mut messages: BTreeMap<String, MessageInfo<'_>> =
@@ -654,6 +667,7 @@ impl<'a> DeriveData<'a> {
             out.append_all(quote! {
                 #[allow(dead_code)]
                 #[allow(non_snake_case)]
+                #[allow(non_camel_case_types)]
                 #[derive(Default)]
                 pub struct #ident {
                     #(

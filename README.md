@@ -92,6 +92,7 @@ stored in a `u32`.
 * Generate dispatcher for decoding based on ID (including ranges)
 * Enforce that arrays of messages contain the same signals
 * Support multiplexed signals
+* Emit `enum`s for value-tables, with optional type association
 * (Maybe) scope generated types to a module
 
 ## License
