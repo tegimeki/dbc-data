@@ -7,8 +7,8 @@ mod test {
     #[derive(DbcData, Default)]
     #[dbc_file = "tests/test.dbc"]
     struct Test {
-        aligned_ule: AlignedUnsignedLE,
-        aligned_ube: AlignedUnsignedBE,
+        aligned_le: AlignedLE,
+        aligned_be: AlignedBE,
         unaligned_ule: UnalignedUnsignedLE,
         unaligned_ube: UnalignedUnsignedBE,
         unaligned_sle: UnalignedSignedLE,
@@ -26,11 +26,11 @@ mod test {
         let mut t = Test::default();
 
         // invalid length
-        assert!(!t.aligned_ule.decode(&[0x00]));
+        assert!(!t.aligned_le.decode(&[0x00]));
 
         // message ID, DLC constants
-        assert_eq!(AlignedUnsignedLE::ID, 1023);
-        assert_eq!(AlignedUnsignedLE::DLC, 8);
+        assert_eq!(AlignedLE::ID, 1023);
+        assert_eq!(AlignedLE::DLC, 8);
         assert_eq!(MiscMessage::ID, 8191);
         assert_eq!(MiscMessage::DLC, 2);
     }
@@ -40,16 +40,19 @@ mod test {
         let mut t = Test::default();
 
         assert!(t
-            .aligned_ule
-            .decode(&[0xAA, 0x55, 0x01, 0x20, 0x34, 0x56, 0x78, 0x9A]));
-        assert_eq_hex!(t.aligned_ule.Unsigned8, 0x55);
-        assert_eq_hex!(t.aligned_ule.Unsigned16, 0x2001);
-        assert_eq_hex!(t.aligned_ule.Unsigned32, 0x9A785634);
+            .aligned_le
+            .decode(&[0xfe, 0x55, 0x01, 0x20, 0x34, 0x56, 0x78, 0x9A]));
+        assert_eq_hex!(t.aligned_le.Signed8, -2);
+        assert_eq_hex!(t.aligned_le.Unsigned8, 0x55);
+        assert_eq_hex!(t.aligned_le.Unsigned16, 0x2001);
+        assert_eq_hex!(t.aligned_le.Unsigned32, 0x9A785634);
 
         let mut pdu: [u8; 8] = [0u8; 8];
-        t.aligned_ule.Unsigned8 = 0x33;
-        t.aligned_ule.Unsigned16 = 0x78bc;
-        assert!(t.aligned_ule.encode(pdu.as_mut_slice()));
+        t.aligned_le.Signed8 = -99;
+        t.aligned_le.Unsigned8 = 0x33;
+        t.aligned_le.Unsigned16 = 0x78bc;
+        assert!(t.aligned_le.encode(pdu.as_mut_slice()));
+        assert_eq_hex!(pdu[0], 0x9d);
         assert_eq_hex!(pdu[1], 0x33);
         assert_eq_hex!(pdu[2], 0xbc);
         assert_eq_hex!(pdu[3], 0x78);
@@ -60,17 +63,20 @@ mod test {
         let mut t = Test::default();
 
         assert!(t
-            .aligned_ube
+            .aligned_be
             .decode(&[0xAA, 0x55, 0x01, 0x20, 0x34, 0x56, 0x78, 0x9A]));
-        assert_eq_hex!(t.aligned_ube.Unsigned8, 0x55);
-        assert_eq_hex!(t.aligned_ube.Unsigned16, 0x0120);
-        assert_eq_hex!(t.aligned_ube.Unsigned32, 0x3456789A);
+        assert_eq_hex!(t.aligned_be.Signed8, -86);
+        assert_eq_hex!(t.aligned_be.Unsigned8, 0x55);
+        assert_eq_hex!(t.aligned_be.Unsigned16, 0x0120);
+        assert_eq_hex!(t.aligned_be.Unsigned32, 0x3456789A);
 
         let mut pdu: [u8; 8] = [0u8; 8];
-        t.aligned_ube.Unsigned8 = 0x77;
-        t.aligned_ube.Unsigned16 = 0x78bc;
-        t.aligned_ube.Unsigned32 = 0x1234FEDC;
-        assert!(t.aligned_ube.encode(pdu.as_mut_slice()));
+        t.aligned_be.Signed8 = 12;
+        t.aligned_be.Unsigned8 = 0x77;
+        t.aligned_be.Unsigned16 = 0x78bc;
+        t.aligned_be.Unsigned32 = 0x1234FEDC;
+        assert!(t.aligned_be.encode(pdu.as_mut_slice()));
+        assert_eq_hex!(pdu[0], 0x0C);
         assert_eq_hex!(pdu[1], 0x77);
         assert_eq_hex!(pdu[2], 0x78);
         assert_eq_hex!(pdu[3], 0xbc);

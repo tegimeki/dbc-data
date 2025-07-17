@@ -6,15 +6,17 @@ BS_:
 
 BU_: Ecu1 Ecu2
 
-BO_ 1023 AlignedUnsignedLE: 8 Ecu1
+BO_ 1023 AlignedLE: 8 Ecu1
  SG_ Unsigned32 : 32|32@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Unsigned16 : 16|16@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Unsigned8 : 8|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Signed8 : 0|8@1- (1,0) [0|0] "" Vector__XXX
 
-BO_ 1023 AlignedUnsignedBE: 8 Ecu1
+BO_ 1023 AlignedBE: 8 Ecu1
  SG_ Unsigned32 : 39|32@0+ (1,0) [0|0] "" Vector__XXX
  SG_ Unsigned16 : 23|16@0+ (1,0) [0|0] "" Vector__XXX
  SG_ Unsigned8 : 15|8@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Signed8 : 7|8@0- (1,0) [0|0] "" Vector__XXX
 
 BO_ 1025 UnalignedUnsignedLE: 8 Ecu1
  SG_ Unsigned15 : 43|15@1+ (1,0) [0|0] "" Vector__XXX

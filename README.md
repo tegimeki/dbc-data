@@ -37,8 +37,8 @@ fn test() {
 
     assert_eq!(SomeMessage::ID, 1023);
     assert_eq!(SomeMessage::DLC, 4);
-    assert!(t.some_message.decode(&[0x12, 0x34, 0x56, 0x78]));
-    assert_eq!(t.some_message.Signed8, 0x12);
+    assert!(t.some_message.decode(&[0xFE, 0x34, 0x56, 0x78]));
+    assert_eq!(t.some_message.Signed8, -2);
     assert_eq!(t.some_message.Unsigned8, 0x34);
     assert_eq!(t.some_message.Unsigned16, 0x5678); // big-endian
 }
