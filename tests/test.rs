@@ -19,6 +19,7 @@ mod test {
         sixty_four_be: SixtyFourBitBE,
         sixty_four_signed: SixtyFourBitSigned,
         grouped: [GroupData1; 3],
+        extended: Extended1,
     }
 
     #[test]
@@ -33,6 +34,9 @@ mod test {
         assert_eq!(AlignedLE::DLC, 8);
         assert_eq!(MiscMessage::ID, 8191);
         assert_eq!(MiscMessage::DLC, 2);
+        assert!(!MiscMessage::EXTENDED);
+        assert_eq!(Extended1::ID, 0x123456);
+        assert!(Extended1::EXTENDED);
     }
 
     #[test]

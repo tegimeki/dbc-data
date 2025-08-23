@@ -65,6 +65,9 @@ BO_ 130 GroupData3: 8 Ecu1
  SG_ ValueA : 0|32@1+ (1,0) [0|0] "" Vector__XXX
  SG_ ValueB : 32|32@1+ (1,0) [0|0] "" Vector__XXX
 
+BO_ 2148676694 Extended1: 8 Ecu1
+ SG_ DataA : 0|32@1+ (1,0) [0|0] "" Vector__XXX
+
 BA_DEF_DEF_  "GenMsgSendType" "";
 BA_DEF_DEF_  "GenMsgDelayTime" 0;
 BA_DEF_DEF_  "GenMsgCycleTime" 0;
