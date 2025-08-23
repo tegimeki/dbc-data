@@ -203,4 +203,15 @@ mod test {
             .decode(&[0xAA, 0x55, 0x01, 0x20, 0x34, 0x56, 0x78, 0x9A]));
         assert!(t.grouped[0].ValueA == 0x200155AA);
     }
+
+    #[test]
+    fn try_from() {
+        let data: [u8; 8] = [0x20, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let misc = MiscMessage::try_from(&data[0..2]);
+        assert!(misc.is_ok());
+        let misc = MiscMessage::try_from(&data[0..3]);
+        assert!(misc.is_err());
+        let sixty_four = SixtyFourBitLE::try_from(&data[0..8]);
+        assert!(sixty_four.is_ok());
+    }
 }

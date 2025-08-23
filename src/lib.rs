@@ -699,6 +699,18 @@ impl<'a> DeriveData<'a> {
                         true
                     }
                 }
+
+                impl TryFrom<&[u8]> for #ident {
+                    type Error = ();
+                    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+                        let mut pdu = Self::default(); // TODO: elide
+                        if pdu.decode(data) {
+                            Ok(pdu)
+                        } else {
+                            Err(())
+                        }
+                    }
+                }
             });
         }
         out
