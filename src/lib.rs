@@ -658,7 +658,7 @@ impl<'a> DeriveData<'a> {
             }
             let cycle_time = if let Some(c) = message.cycle_time {
                 quote! {
-                    const CYCLE_TIME: usize = #c;
+                    pub const CYCLE_TIME: usize = #c;
                 }
             } else {
                 quote! {}
@@ -676,9 +676,9 @@ impl<'a> DeriveData<'a> {
                 }
 
                 impl #ident {
-                    const ID: u32 = #id;
-                    const DLC: u8 = #dlc8;
-                    const EXTENDED: bool = #extended;
+                    pub const ID: u32 = #id;
+                    pub const DLC: u8 = #dlc8;
+                    pub const EXTENDED: bool = #extended;
                     #cycle_time
 
                     pub fn decode(&mut self, pdu: &[u8])

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.5 (Pending)
+* Declare message struct `const` values as `pub`
+
 ## 0.1.4
 * Adds support for `try_into(&[u8])` on generated types.
 * Only require 2021 edition, as we don't yet use 2024 edition features.
