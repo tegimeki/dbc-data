@@ -97,17 +97,21 @@ mod test {
         // various unaligned values
         assert!(t
             .unaligned_ule
-            .decode(&[0xF7, 0x70, 0x20, 0x31, 0xf0, 0xa1, 0x73, 0xfd]));
+            .decode(&[0xF5, 0x71, 0x20, 0x31, 0xf0, 0xa1, 0x73, 0xfd]));
         assert_eq_hex!(t.unaligned_ule.Unsigned15, 0x2E74);
         assert_eq_hex!(t.unaligned_ule.Unsigned23, 0x7C0C48);
         assert_eq_hex!(t.unaligned_ule.Unsigned3, 6u8);
+        assert_eq_hex!(t.unaligned_ule.Unsigned2, 1u8);
+        assert_eq_hex!(t.unaligned_ule.Unsigned2a, 2u8);
 
         let mut pdu: [u8; 8] = [0xffu8; 8];
         t.unaligned_ule.Unsigned15 = 0x5af5;
         t.unaligned_ule.Unsigned23 = 0x3C0C49;
         t.unaligned_ule.Unsigned3 = 0x2;
+        t.unaligned_ule.Unsigned2 = 0x2;
+        t.unaligned_ule.Unsigned2a = 0x3;
         assert!(t.unaligned_ule.encode(pdu.as_mut_slice()));
-        assert_eq_hex!(pdu, [0xffu8, 0xd7, 0x27, 0x31, 0xf0, 0xae, 0xd7, 0xfe]);
+        assert_eq_hex!(pdu, [0xffu8, 0xd6, 0x27, 0x31, 0xf0, 0xae, 0xd7, 0xfe]);
     }
 
     #[test]

@@ -22,6 +22,8 @@ BO_ 1025 UnalignedUnsignedLE: 8 Ecu1
  SG_ Unsigned15 : 43|15@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Unsigned23 : 18|23@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Unsigned3 : 11|3@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Unsigned2 : 8|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Unsigned2a : 1|2@1+ (1,0) [0|0] "" Vector__XXX
 
 BO_ 1026 UnalignedUnsignedBE: 8 Ecu1
  SG_ Unsigned15 : 43|15@0+ (1,0) [0|0] "" Vector__XXX

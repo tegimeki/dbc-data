@@ -261,14 +261,20 @@ impl<'a> SignalInfo<'a> {
                         });
                         if left != 0 {
                             if count == 0 {
+                                let width = self.width;
                                 ts.append_all(quote! {
-                                    let v = (v >> #left) & ((1 << #left) - 1);
+                                    let v = (v >> #left) & ((1 << #width) - 1);
                                 });
                             } else {
                                 ts.append_all(quote! {
                                     let v = v >> #left;
                                 });
                             }
+                        } else {
+                            let rem = self.width;
+                            ts.append_all(quote! {
+                                let v = v & ((1 << #rem) -1);
+                            });
                         }
                     } else {
                         let shift = (o * 8) - left;
