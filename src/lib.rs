@@ -44,9 +44,9 @@
 //! This crate is aimed at embedded systems where typically some
 //! subset of the messages and signals defined in the `.dbc` file are
 //! of interest, and the rest can be ignored for a minimal footpint.
-//! If you need to decode the entire DBC into rich (possibly `std`-dependent)
-//! types to run on a host system, there are other crates for that
-//! such as `dbc_codegen`.
+//! If you need to decode the entire DBC into rich (possibly
+//! `std`-dependent) types to run on a host system, there are other
+//! crates for that such as `dbc_codegen`.
 //!
 //! ## Messages
 //! As `.dbc` files typically contain multiple messages, each of these
@@ -56,18 +56,45 @@
 //!
 //! When a range of message IDs contain the same signals, such as a
 //! series of readings which do not fit into a single message, then
-//! declaring an array will allow that type to be used for all of them.
+//! declaring an array will allow that type to be used for all of
+//! them.
 //!
 //! # Signals
-//! For cases where only certain signals within a message are needed, the
-//! `#[dbc_signals]` attribute lets you specify which ones are used.
+//! For cases where only certain signals within a message are needed,
+//! the `#[dbc_signals]` attribute lets you specify which ones are
+//! used.
 //!
 //! ## Types
-//! Single-bit signals generate `bool` types, and signals with a scale factor
-//! generate `f32` types.  All other signals generate signed or unsigned
-//! native types which are large enough to fit the contained values, e.g.
-//! 13-bit signals will be stored in a `u16` and 17-bit signals will be
-//! stored in a `u32`.
+//! Single-bit signals generate `bool` types, and signals with a scale
+//! factor generate `f32` types.  All other signals generate signed or
+//! unsigned native types which are large enough to fit the contained
+//! values, e.g.  13-bit signals will be stored in a `u16` and 17-bit
+//! signals will be stored in a `u32`.
+//!
+//! # Usage
+//! As DBC message names tend to follow different conventions from Rust
+//! code, it can be helpful to wrap them in newtype declarations.
+//! Additionally, it is often desirable to scope these identifiers away
+//! from application code by using a private module:
+//!
+//! ```ignore
+//! mod private {
+//!     use dbc_data::DbcData;
+//!     #[derive(DbcData)]
+//!     // (struct with DBC messages, e.g. some_Message_NAME)
+//! }
+//!
+//! pub type SomeMessageName = private::some_Message_NAME;
+//!
+//! ```
+//!
+//! The application uses this wrapped type without exposure to the
+//! DBC-centric naming.  The wrapped types can have their own `impl`
+//! block(s) to extend functionality, if desired.  Functions which
+//! perform operations on signals, define new constants, etc. can be
+//! added in such blocks.  The application can access signal fields
+//! directly from the underlying type and/or use the wrapped
+//! interfaces.
 //!
 //! # Functionality
 //! * Decode signals from PDU into native types
@@ -81,7 +108,6 @@
 //! * Enforce that arrays of messages contain the same signals
 //! * Support multiplexed signals
 //! * Emit `enum`s for value-tables, with optional type association
-//! * (Maybe) scope generated types to a module
 //!
 //! # License
 //! [LICENSE-MIT]

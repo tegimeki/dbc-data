@@ -1,7 +1,9 @@
 # Changelog
 
-## 0.1.5 (Pending)
+## 0.1.5
 * Declare message struct `const` values as `pub`
+* Fix small (sub-byte) signal masking
+* Include scoping and newtype notes in usage docs
 
 ## 0.1.4
 * Adds support for `try_into(&[u8])` on generated types.
