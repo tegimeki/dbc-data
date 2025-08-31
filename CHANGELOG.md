@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6 (pending)
+* Generates doc-comments for messages and signals.  Messages show their CAN ID and cycle-time (when applicable); signals show their start bit, width, endianness and scale-factor (when applicable).
+* Minor refactoring, clean-up and commenting
+
 ## 0.1.5
 * Declare message struct `const` values as `pub`
 * Fix small (sub-byte) signal masking

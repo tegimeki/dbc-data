@@ -176,18 +176,28 @@ impl SignalFilter {
 
 /// Information about signal within message
 struct SignalInfo<'a> {
+    /// The DBC signal reference
     signal: &'a Signal,
+    /// Our source identifier
     ident: Ident,
+    /// The native type identifier
     ntype: Ident,
+    /// The unsigned type used for encoding/decoding
     utype: Ident,
+    /// The start bit of the signal within the PDU
     start: usize,
+    /// The width (in bits) of the signal
     width: usize,
+    /// The native width of the type containing the signal
     nwidth: usize,
+    /// The scale-factor for the signal
     scale: f32,
+    /// Indicates signed v.s. unsigned signal
     signed: bool,
 }
 
 impl<'a> SignalInfo<'a> {
+    /// Create signal information
     fn new(signal: &'a Signal, message: &MessageInfo) -> Self {
         // TODO: sanitize and/or change name format
         let name = signal.name();
@@ -228,6 +238,63 @@ impl<'a> SignalInfo<'a> {
 
     /// Generate the code for extracting signal bits
     fn extract_bits(&self) -> TokenStream {
+        if self.width == self.nwidth && (self.start % 8) == 0 {
+            self.extract_aligned()
+        } else {
+            self.extract_unaligned()
+        }
+    }
+
+    /// Code generation for aligned signal bits
+    fn extract_aligned(&self) -> TokenStream {
+        let low = self.start / 8;
+        let utype = &self.utype;
+        let le = self.signal.byte_order() == &ByteOrder::LittleEndian;
+        let mut ts = TokenStream::new();
+
+        let ext = if le {
+            Ident::new("from_le_bytes", utype.span())
+        } else {
+            Ident::new("from_be_bytes", utype.span())
+        };
+
+        let tokens = match self.width {
+            8 => quote! {
+                #utype::#ext([pdu[#low]])
+            },
+            16 => quote! {
+                #utype::#ext([pdu[#low],
+                              pdu[#low + 1]])
+            },
+            32 => quote! {
+                #utype::#ext([pdu[#low + 0],
+                              pdu[#low + 1],
+                              pdu[#low + 2],
+                              pdu[#low + 3]])
+            },
+            // NOTE: this compiles to very small code and does not
+            // involve actually fetching 8 separate bytes; e.g. on
+            // armv7 an `ldrd` to get both 32-bit values followed by
+            // two `rev` instructions to reverse the bytes.
+            64 => quote! {
+                #utype::#ext([pdu[#low + 0],
+                              pdu[#low + 1],
+                              pdu[#low + 2],
+                              pdu[#low + 3],
+                              pdu[#low + 4],
+                              pdu[#low + 5],
+                              pdu[#low + 6],
+                              pdu[#low + 7],
+                ])
+            },
+            _ => unimplemented!(),
+        };
+        ts.append_all(tokens);
+        quote! { { #ts } }
+    }
+
+    /// Code generation for unaligned signals
+    fn extract_unaligned(&self) -> TokenStream {
         let low = self.start / 8;
         let left = self.start % 8;
         let high = (self.start + self.width - 1) / 8;
@@ -236,164 +303,125 @@ impl<'a> SignalInfo<'a> {
         let le = self.signal.byte_order() == &ByteOrder::LittleEndian;
 
         let mut ts = TokenStream::new();
-        if self.width == self.nwidth && left == 0 {
-            // aligned
-            let ext = if le {
-                Ident::new("from_le_bytes", utype.span())
-            } else {
-                Ident::new("from_be_bytes", utype.span())
-            };
-            let tokens = match self.width {
-                8 => quote! {
-                    #utype::#ext([pdu[#low]])
-                },
-                16 => quote! {
-                    #utype::#ext([pdu[#low],
-                                  pdu[#low + 1]])
-                },
-                32 => quote! {
-                    #utype::#ext([pdu[#low + 0],
-                                  pdu[#low + 1],
-                                  pdu[#low + 2],
-                                  pdu[#low + 3]])
-                },
-                // NOTE: this compiles to very small code and does not
-                // involve actually fetching 8 separate bytes; e.g. on
-                // armv7 an `ldrd` to get both 32-bit values followed by
-                // two `rev` instructions to reverse the bytes.
-                64 => quote! {
-                    #utype::#ext([pdu[#low + 0],
-                                  pdu[#low + 1],
-                                  pdu[#low + 2],
-                                  pdu[#low + 3],
-                                  pdu[#low + 4],
-                                  pdu[#low + 5],
-                                  pdu[#low + 6],
-                                  pdu[#low + 7],
-                    ])
-                },
-                _ => unimplemented!(),
-            };
-            ts.append_all(tokens);
-        } else {
-            if le {
-                let count = high - low;
-                for o in 0..=count {
-                    let byte = low + o;
-                    if o == 0 {
-                        // first byte
-                        ts.append_all(quote! {
-                            let v = pdu[#byte] as #utype;
-                        });
-                        if left != 0 {
-                            if count == 0 {
-                                let width = self.width;
-                                ts.append_all(quote! {
-                                    let v = (v >> #left) & ((1 << #width) - 1);
-                                });
-                            } else {
-                                ts.append_all(quote! {
-                                    let v = v >> #left;
-                                });
-                            }
-                        } else {
-                            let rem = self.width;
+        if le {
+            let count = high - low;
+            for o in 0..=count {
+                let byte = low + o;
+                if o == 0 {
+                    // first byte
+                    ts.append_all(quote! {
+                        let v = pdu[#byte] as #utype;
+                    });
+                    if left != 0 {
+                        if count == 0 {
+                            let width = self.width;
                             ts.append_all(quote! {
-                                let v = v & ((1 << #rem) -1);
+                                let v = (v >> #left) & ((1 << #width) - 1);
+                            });
+                        } else {
+                            ts.append_all(quote! {
+                                let v = v >> #left;
                             });
                         }
                     } else {
-                        let shift = (o * 8) - left;
-                        if o == count && right != 0 {
-                            ts.append_all(quote! {
-                                let v = v | (((pdu[#byte]
-                                               & ((1 << #right) - 1))
-                                              as #utype) << #shift);
-                            });
-                        } else {
-                            ts.append_all(quote! {
-                                let v = v | ((pdu[#byte] as #utype) << #shift);
-                            });
-                        }
+                        let rem = self.width;
+                        ts.append_all(quote! {
+                            let v = v & ((1 << #rem) -1);
+                        });
+                    }
+                } else {
+                    let shift = (o * 8) - left;
+                    if o == count && right != 0 {
+                        ts.append_all(quote! {
+                            let v = v | (((pdu[#byte]
+                                           & ((1 << #right) - 1))
+                                          as #utype) << #shift);
+                        });
+                    } else {
+                        ts.append_all(quote! {
+                            let v = v | ((pdu[#byte] as #utype) << #shift);
+                        });
                     }
                 }
-            } else {
-                // big-endian
-                let mut rem = self.width;
-                let mut byte = low;
-                while rem > 0 {
-                    if byte == low {
-                        // first byte
+            }
+        } else {
+            // big-endian
+            let mut rem = self.width;
+            let mut byte = low;
+            while rem > 0 {
+                if byte == low {
+                    // first byte
+                    ts.append_all(quote! {
+                        let v = pdu[#byte] as #utype;
+                    });
+                    if rem < 8 {
+                        // single byte
+                        let mask = rem - 1;
+                        let shift = left + 1 - rem;
                         ts.append_all(quote! {
-                            let v = pdu[#byte] as #utype;
+                            let mask: #utype = (1 << #mask)
+                                | ((1 << #mask) - 1);
+                            let v = (v >> #shift) & mask;
                         });
-                        if rem < 8 {
-                            // single byte
-                            let mask = rem - 1;
-                            let shift = left + 1 - rem;
+                        rem = 0;
+                    } else {
+                        // first of multiple bytes
+                        let mask = left;
+                        let shift = rem - left - 1;
+                        if mask < 7 {
                             ts.append_all(quote! {
                                 let mask: #utype = (1 << #mask)
                                     | ((1 << #mask) - 1);
-                                let v = (v >> #shift) & mask;
+                                let v = (v & mask) << #shift;
                             });
-                            rem = 0;
                         } else {
-                            // first of multiple bytes
-                            let mask = left;
-                            let shift = rem - left - 1;
-                            if mask < 7 {
-                                ts.append_all(quote! {
-                                    let mask: #utype = (1 << #mask)
-                                        | ((1 << #mask) - 1);
-                                    let v = (v & mask) << #shift;
-                                });
-                            } else {
-                                ts.append_all(quote! {
-                                    let v = v << #shift;
-                                });
-                            }
-                            rem -= left + 1;
+                            ts.append_all(quote! {
+                                let v = v << #shift;
+                            });
                         }
+                        rem -= left + 1;
+                    }
+                    byte += 1;
+                } else {
+                    if rem < 8 {
+                        // last byte: take top bits
+                        let shift = 8 - rem;
+                        ts.append_all(quote! {
+                            let v = v |
+                            ((pdu[#byte] as #utype) >> #shift);
+                        });
+                        rem = 0;
+                    } else {
+                        rem -= 8;
+                        ts.append_all(quote! {
+                            let v = v |
+                            ((pdu[#byte] as #utype) << #rem);
+                        });
                         byte += 1;
-                    } else {
-                        if rem < 8 {
-                            // last byte: take top bits
-                            let shift = 8 - rem;
-                            ts.append_all(quote! {
-                                let v = v |
-                                ((pdu[#byte] as #utype) >> #shift);
-                            });
-                            rem = 0;
-                        } else {
-                            rem -= 8;
-                            ts.append_all(quote! {
-                                let v = v |
-                                ((pdu[#byte] as #utype) << #rem);
-                            });
-                            byte += 1;
-                        }
-                    };
-                }
+                    }
+                };
             }
-            // perform sign-extension for values with fewer bits than
-            // the storage type
-            if self.signed && self.width < self.nwidth {
-                let mask = self.width - 1;
-                ts.append_all(quote! {
-                    let mask: #utype = (1 << #mask);
-                    let v = if (v & mask) != 0 {
-                        let mask = mask | (mask - 1);
-                        v | !mask
-                    } else {
-                        v
-                    };
-                });
-            }
-            ts.append_all(quote! { v });
         }
+        // perform sign-extension for values with fewer bits than
+        // the storage type
+        if self.signed && self.width < self.nwidth {
+            let mask = self.width - 1;
+            ts.append_all(quote! {
+                let mask: #utype = (1 << #mask);
+                let v = if (v & mask) != 0 {
+                    let mask = mask | (mask - 1);
+                    v | !mask
+                } else {
+                    v
+                };
+            });
+        }
+        ts.append_all(quote! { v });
+
         quote! { { #ts } }
     }
 
+    /// Generate a signal's decoder
     fn gen_decoder(&self) -> TokenStream {
         let name = &self.ident;
         if self.width == 1 {
@@ -420,6 +448,7 @@ impl<'a> SignalInfo<'a> {
         }
     }
 
+    /// Generate code for encoding a signal value
     fn gen_encoder(&self) -> TokenStream {
         let name = &self.ident;
         let low = self.start / 8;
@@ -531,6 +560,8 @@ impl<'a> SignalInfo<'a> {
         }
     }
 
+    /// We consider any signal with a scale to be a floating-point
+    /// value
     fn is_float(&self) -> bool {
         self.scale != 1.0
     }
@@ -662,6 +693,7 @@ impl<'a> DeriveData<'a> {
 
             let mut signals: Vec<Ident> = vec![];
             let mut types: Vec<Ident> = vec![];
+            let mut docs: Vec<String> = vec![];
             let mut infos: Vec<SignalInfo> = vec![];
             for s in m.signals().iter() {
                 if !filter.use_signal(s.name()) {
@@ -671,6 +703,28 @@ impl<'a> DeriveData<'a> {
                 let signal = SignalInfo::new(s, message);
                 signals.push(signal.ident.clone());
                 types.push(signal.ntype.clone());
+
+                // documentation text
+                let endian_string =
+                    if s.byte_order() == &ByteOrder::LittleEndian {
+                        "little-endian"
+                    } else {
+                        "big-endian"
+                    };
+                let scale_string = if signal.is_float() {
+                    &format!(", scale factor {}", s.factor())
+                } else {
+                    ""
+                };
+                docs.push(format!(
+                    "Wire format: {} bit{} starting at bit {}{} ({})",
+                    s.signal_size(),
+                    if s.signal_size() != &1 { "s" } else { "" },
+                    s.start_bit(),
+                    scale_string,
+                    endian_string,
+                ));
+
                 infos.push(signal);
             }
 
@@ -696,13 +750,27 @@ impl<'a> DeriveData<'a> {
                 quote! {}
             };
 
+            let doc = format!(
+                "{} ID {} (0x{:X}){}",
+                if extended { "Extended" } else { "Standard" },
+                id,
+                id,
+                if let Some(c) = message.cycle_time {
+                    &format!(", cycle time {}ms", c)
+                } else {
+                    ""
+                }
+            );
+
             out.append_all(quote! {
-                #[allow(dead_code)]
+                #[automatically_derived]
                 #[allow(non_snake_case)]
                 #[allow(non_camel_case_types)]
                 #[derive(Default)]
+                #[doc = #doc]
                 pub struct #ident {
                     #(
+                        #[doc = #docs]
                         pub #signals: #types
                     ),*
                 }
