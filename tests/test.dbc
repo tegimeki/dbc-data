@@ -35,7 +35,7 @@ BO_ 1025 UnalignedSignedLE: 8 Ecu1
  SG_ Signed23 : 18|23@1- (1,0) [0|0] "" Vector__XXX
  SG_ Signed3 : 11|3@1- (1,0) [0|0] "" Vector__XXX
 
-BO_ 1026 UnalignedSignedBE: 8 Ecu1
+BO_ 1027 UnalignedSignedBE: 8 Ecu1
  SG_ Signed15 : 43|15@0- (1,0) [0|0] "" Vector__XXX
  SG_ Signed23 : 18|23@0- (1,0) [0|0] "" Vector__XXX
  SG_ Signed3 : 11|3@0- (1,0) [0|0] "" Vector__XXX
@@ -76,3 +76,7 @@ BA_DEF_DEF_  "GenMsgCycleTime" 0;
 
 BA_ "GenMsgCycleTime" BO_ 8191 100;
 BA_ "GenMsgCycleTime" BO_ 66 2000;
+
+VAL_ 8191 Bool_A 1 "On" 0 "Off" ;
+VAL_ 8191 Float_A 3.14 "Pi" 2.718 "e" ;
+VAL_ 1026 Unsigned15 33 "Thirty-three" 37 "Thirty-seven" 17283 "Test";

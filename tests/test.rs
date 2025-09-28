@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod test {
+    use assert_eq_float::assert_eq_float;
     use assert_hex::assert_eq_hex;
     use dbc_data::DbcData;
 
@@ -37,6 +38,14 @@ mod test {
         assert!(!MiscMessage::EXTENDED);
         assert_eq!(Extended1::ID, 0x123456);
         assert!(Extended1::EXTENDED);
+    }
+
+    #[test]
+    fn value_table() {
+        assert_eq_float!(MiscMessage::FLOAT_A_PI, 3.14f32);
+        assert_eq_float!(MiscMessage::FLOAT_A_E, 2.718f32);
+        assert_eq!(MiscMessage::BOOL_A_ON, true);
+        assert_eq!(MiscMessage::BOOL_A_OFF, false);
     }
 
     #[test]
@@ -123,7 +132,10 @@ mod test {
             .unaligned_ube
             .decode(&[0xfd, 0xe5, 0xa1, 0xf0, 0x31, 0xf8, 0x70, 0x77]));
         assert_eq_hex!(t.unaligned_ube.Unsigned3, 2u8);
-        assert_eq_hex!(t.unaligned_ube.Unsigned15, 0x4383);
+        assert_eq_hex!(
+            t.unaligned_ube.Unsigned15,
+            UnalignedUnsignedBE::UNSIGNED15_TEST
+        );
         assert_eq_hex!(t.unaligned_ube.Unsigned23, 0x1F031F);
     }
 

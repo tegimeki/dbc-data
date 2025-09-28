@@ -121,8 +121,8 @@ use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 use std::{collections::BTreeMap, fs::read};
 use syn::{
-    parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Expr,
-    Field, Fields, Ident, Lit, Meta, Result, Type,
+    parse_macro_input, parse_quote, spanned::Spanned, Attribute, Data,
+    DeriveInput, Expr, Field, Fields, Ident, Lit, Meta, Result, Type,
 };
 
 struct DeriveData<'a> {
@@ -233,6 +233,24 @@ impl<'a> SignalInfo<'a> {
             signed,
             width,
             nwidth,
+        }
+    }
+
+    /// Produce an identifier for the DBC f64 value
+    fn const_ident(&self, v: f64) -> Expr {
+        if self.is_float() {
+            let v = v as f32;
+            parse_quote!(#v)
+        } else {
+            if self.width == 1 {
+                let b = v != 0.0;
+                parse_quote!(#b)
+            } else {
+                let v = v as usize;
+                let t = self.ntype.clone();
+                // TODO: make this less verbose and use type directly
+                parse_quote!(#v as #t)
+            }
         }
     }
 
@@ -695,6 +713,7 @@ impl<'a> DeriveData<'a> {
             let mut types: Vec<Ident> = vec![];
             let mut docs: Vec<String> = vec![];
             let mut infos: Vec<SignalInfo> = vec![];
+            let mut values = TokenStream::new();
             for s in m.signals().iter() {
                 if !filter.use_signal(s.name()) {
                     continue;
@@ -716,16 +735,40 @@ impl<'a> DeriveData<'a> {
                 } else {
                     ""
                 };
-                docs.push(format!(
-                    "Wire format: {} bit{} starting at bit {}{} ({})",
+                let mut doc = format!(
+                    "Wire format: {} bit{} starting at bit {}{} ({})\n",
                     s.signal_size(),
                     if s.signal_size() != &1 { "s" } else { "" },
                     s.start_bit(),
                     scale_string,
                     endian_string,
-                ));
+                );
+
+                // value-table constants
+                if let Some(descs) = self
+                    .dbc
+                    .value_descriptions_for_signal(*m.message_id(), s.name())
+                {
+                    for desc in descs.iter() {
+                        let santized: String =
+                            format!("{}_{}", s.name(), desc.b())
+                                .to_uppercase()
+                                .chars()
+                                .filter(|c| c.is_alphanumeric() || c == &'_')
+                                .collect();
+                        let c = Ident::new(&santized, signal.ident.span());
+                        let i = signal.const_ident(*desc.a());
+                        let v = quote! {#i};
+                        let t = signal.ntype.clone();
+                        values.extend(quote! {
+                            pub const #c: #t = #v;
+                        });
+                        doc += &format!("\n{c} = {v}\n");
+                    }
+                }
 
                 infos.push(signal);
+                docs.push(doc);
             }
 
             let id = message.id;
@@ -780,6 +823,7 @@ impl<'a> DeriveData<'a> {
                     pub const DLC: u8 = #dlc8;
                     pub const EXTENDED: bool = #extended;
                     #cycle_time
+                    #values
 
                     pub fn decode(&mut self, pdu: &[u8])
                                   -> bool {
@@ -817,6 +861,14 @@ impl<'a> DeriveData<'a> {
     }
 }
 
+/// See the crate documentation for details.
+///
+/// The `#[dbc_file]` attribute specifies the name of the .dbc file
+/// to use, and is required.
+///
+/// Individual messages may specify a `#[dbc_signals]` attribute
+/// naming the individual signals of interest; otherwise, all
+/// signals within the message are generated.
 #[proc_macro_derive(DbcData, attributes(dbc_file, dbc_signals))]
 pub fn dbc_data_derive(
     input: proc_macro::TokenStream,
