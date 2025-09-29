@@ -793,16 +793,17 @@ impl<'a> DeriveData<'a> {
                 quote! {}
             };
 
+            let cycle_time_doc = if let Some(c) = message.cycle_time {
+                &format!(", cycle time {}ms", c)
+            } else {
+                ""
+            };
             let doc = format!(
                 "{} ID {} (0x{:X}){}",
                 if extended { "Extended" } else { "Standard" },
                 id,
                 id,
-                if let Some(c) = message.cycle_time {
-                    &format!(", cycle time {}ms", c)
-                } else {
-                    ""
-                }
+                cycle_time_doc,
             );
 
             out.append_all(quote! {

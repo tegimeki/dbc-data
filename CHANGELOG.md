@@ -1,4 +1,6 @@
 # Changelog
+## 0.1.7
+* Fixes compile error on older `rustc` versions (e.g. 1.84.x) where the doc-string formatting would hit `error[E0716]: temporary value dropped while borrowed`, so a let-binding is used to work around this (the latest compilers know that this was a valid use-case).
 
 ## 0.1.6
 * Generates doc-comments for messages and signals.  Messages show their CAN ID and cycle-time (when applicable); signals show their start bit, width, endianness and scale-factor (when applicable).
