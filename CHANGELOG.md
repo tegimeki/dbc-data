@@ -1,4 +1,8 @@
 # Changelog
+## 0.1.8
+* Move repo to OxiBUS GitHub organization
+* License change to MIT or Apache 2.0
+
 ## 0.1.7
 * Fixes compile error on older `rustc` versions (e.g. 1.84.x) where the doc-string formatting would hit `error[E0716]: temporary value dropped while borrowed`, so a let-binding is used to work around this (the latest compilers know that this was a valid use-case).
 
