@@ -1,13 +1,13 @@
 [package]
 name = "dbc-data"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 authors = ["Michael Fairman <mfairman@tegimeki.com>"]
 readme = "README.md"
 description = "Derive macro for CAN DBC code generation"
-repository = "https://gitlab.com/mfairman/dbc-data"
+repository = "https://github.com/oxibus/dbc-data"
 keywords = ["can", "automotive", "ecu", "no-std"]
-license = "MIT"
+license = "MIT OR Apache-2.0"
 
 
 [lib]
