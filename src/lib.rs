@@ -113,25 +113,26 @@
 //! [LICENSE-MIT]
 //!
 
-extern crate proc_macro;
-use can_dbc::{
-    AttributeValuedForObjectType, ByteOrder, MessageId, Signal, ValueType, DBC,
-};
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::fs::read;
+
+use can_dbc::{ByteOrder, MessageId, Signal, ValueType, DBC};
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
-use std::{collections::BTreeMap, fs::read};
+use syn::spanned::Spanned;
 use syn::{
-    parse_macro_input, parse_quote, spanned::Spanned, Attribute, Data,
-    DeriveInput, Expr, Field, Fields, Ident, Lit, Meta, Result, Type,
+    parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Expr, Field,
+    Fields, Ident, Lit, Meta, Result, Type,
 };
 
 struct DeriveData<'a> {
     /// Name of the struct we are deriving for
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     name: &'a Ident,
     /// The parsed DBC file
-    dbc: can_dbc::DBC,
-    /// All of the messages to derive
+    dbc: DBC,
+    /// All messages to derive
     messages: BTreeMap<String, MessageInfo<'a>>,
 }
 
@@ -144,7 +145,7 @@ struct MessageInfo<'a> {
     cycle_time: Option<usize>,
 }
 
-/// Filter signals based on #[dbc_signals] list
+/// Filter signals based on `#[dbc_signals]` list
 struct SignalFilter {
     names: Vec<String>,
 }
@@ -154,7 +155,7 @@ impl SignalFilter {
     fn new(message: &MessageInfo) -> Self {
         let mut names: Vec<String> = vec![];
         if let Some(attrs) = parse_attr(message.attrs, "dbc_signals") {
-            let list = attrs.split(",");
+            let list = attrs.split(',');
             for name in list {
                 let name = name.trim();
                 names.push(name.to_string());
@@ -217,7 +218,7 @@ impl<'a> SignalInfo<'a> {
         let utype = if width == 1 {
             "bool"
         } else {
-            &format!("{}{}", if signed { "i" } else { "u" }, nwidth)
+            &format!("{}{nwidth}", if signed { "i" } else { "u" })
         };
 
         // get native type for signal
@@ -241,16 +242,14 @@ impl<'a> SignalInfo<'a> {
         if self.is_float() {
             let v = v as f32;
             parse_quote!(#v)
+        } else if self.width == 1 {
+            let b = v != 0.0;
+            parse_quote!(#b)
         } else {
-            if self.width == 1 {
-                let b = v != 0.0;
-                parse_quote!(#b)
-            } else {
-                let v = v as usize;
-                let t = self.ntype.clone();
-                // TODO: make this less verbose and use type directly
-                parse_quote!(#v as #t)
-            }
+            let v = v as usize;
+            let t = self.ntype.clone();
+            // TODO: make this less verbose and use type directly
+            parse_quote!(#v as #t)
         }
     }
 
@@ -312,6 +311,7 @@ impl<'a> SignalInfo<'a> {
     }
 
     /// Code generation for unaligned signals
+    #[expect(clippy::too_many_lines)]
     fn extract_unaligned(&self) -> TokenStream {
         let low = self.start / 8;
         let left = self.start % 8;
@@ -400,24 +400,22 @@ impl<'a> SignalInfo<'a> {
                         rem -= left + 1;
                     }
                     byte += 1;
+                } else if rem < 8 {
+                    // last byte: take top bits
+                    let shift = 8 - rem;
+                    ts.append_all(quote! {
+                        let v = v |
+                        ((pdu[#byte] as #utype) >> #shift);
+                    });
+                    rem = 0;
                 } else {
-                    if rem < 8 {
-                        // last byte: take top bits
-                        let shift = 8 - rem;
-                        ts.append_all(quote! {
-                            let v = v |
-                            ((pdu[#byte] as #utype) >> #shift);
-                        });
-                        rem = 0;
-                    } else {
-                        rem -= 8;
-                        ts.append_all(quote! {
-                            let v = v |
-                            ((pdu[#byte] as #utype) << #rem);
-                        });
-                        byte += 1;
-                    }
-                };
+                    rem -= 8;
+                    ts.append_all(quote! {
+                        let v = v |
+                        ((pdu[#byte] as #utype) << #rem);
+                    });
+                    byte += 1;
+                }
             }
         }
         // perform sign-extension for values with fewer bits than
@@ -452,15 +450,15 @@ impl<'a> SignalInfo<'a> {
         } else {
             let value = self.extract_bits();
             let ntype = &self.ntype;
-            if !self.is_float() {
-                quote! {
-                    self.#name = #value as #ntype;
-                }
-            } else {
+            if self.is_float() {
                 let scale = self.scale;
                 let offset = *self.signal.offset() as f32;
                 quote! {
                     self.#name = ((#value as f32) * #scale) + #offset;
+                }
+            } else {
+                quote! {
+                    self.#name = #value as #ntype;
                 }
             }
         }
@@ -553,27 +551,26 @@ impl<'a> SignalInfo<'a> {
                         lshift = 0;
                     }
                 }
-            } else {
-                if self.width == self.nwidth && left == 7 {
-                    // aligned big-endian
-                    let mut bits = self.nwidth;
-                    let mut shift = bits - 8;
-                    let mut byte = (self.start - 7) / 8;
-                    while bits >= 8 {
-                        ts.append_all(quote! {
-                            pdu[#byte] = ((v >> #shift) as u8) & 0xff;
-                        });
-                        bits -= 8;
-                        byte += 1;
-                        if shift >= 8 {
-                            shift -= 8;
-                        }
+            } else if self.width == self.nwidth && left == 7 {
+                // aligned big-endian
+                let mut bits = self.nwidth;
+                let mut shift = bits - 8;
+                let mut byte = (self.start - 7) / 8;
+                while bits >= 8 {
+                    ts.append_all(quote! {
+                        pdu[#byte] = ((v >> #shift) as u8) & 0xff;
+                    });
+                    bits -= 8;
+                    byte += 1;
+                    if shift >= 8 {
+                        shift -= 8;
                     }
-                } else {
-                    // unaligned big-endian
-                    //                    todo!();
                 }
+            } else {
+                // unaligned big-endian
+                //                    todo!();
             }
+
             ts
         }
     }
@@ -603,22 +600,22 @@ impl<'a> MessageInfo<'a> {
             if message.message_name() == &name {
                 let id = message.message_id();
                 let (id32, extended) = match *id {
-                    MessageId::Standard(id) => (id as u32, false),
+                    MessageId::Standard(id) => (u32::from(id), false),
                     MessageId::Extended(id) => (id, true),
                 };
                 let mut cycle_time: Option<usize> = None;
-                for attr in dbc.attribute_values().iter() {
+                for attr in dbc.attribute_values() {
+                    use can_dbc::AttributeValuedForObjectType as AV;
+
                     let value = attr.attribute_value();
-                    use AttributeValuedForObjectType as AV;
-                    match value {
-                        AV::MessageDefinitionAttributeValue(aid, Some(av)) => {
-                            if aid == id
-                                && attr.attribute_name() == "GenMsgCycleTime"
-                            {
-                                cycle_time = Some(Self::attr_value(av));
-                            }
+                    if let AV::MessageDefinitionAttributeValue(aid, Some(av)) =
+                        value
+                    {
+                        if aid == id
+                            && attr.attribute_name() == "GenMsgCycleTime"
+                        {
+                            cycle_time = Some(Self::attr_value(av));
                         }
-                        _ => {}
                     }
                 }
 
@@ -670,7 +667,7 @@ impl<'a> DeriveData<'a> {
 
         // gather all of the messages and associated attributes
         let mut messages: BTreeMap<String, MessageInfo<'_>> =
-            Default::default();
+            BTreeMap::default();
         match &input.data {
             Data::Struct(data) => match &data.fields {
                 Fields::Named(fields) => {
@@ -697,29 +694,30 @@ impl<'a> DeriveData<'a> {
         })
     }
 
+    #[expect(clippy::too_many_lines)]
     fn build(self) -> TokenStream {
         let mut out = TokenStream::new();
 
-        for (name, message) in self.messages.iter() {
+        for (name, message) in self.messages {
             let m = self
                 .dbc
                 .messages()
                 .get(message.index)
                 .unwrap_or_else(|| panic!("Unknown message {name}"));
 
-            let filter = SignalFilter::new(message);
+            let filter = SignalFilter::new(&message);
 
             let mut signals: Vec<Ident> = vec![];
             let mut types: Vec<Ident> = vec![];
             let mut docs: Vec<String> = vec![];
             let mut infos: Vec<SignalInfo> = vec![];
             let mut values = TokenStream::new();
-            for s in m.signals().iter() {
+            for s in m.signals() {
                 if !filter.use_signal(s.name()) {
                     continue;
                 }
 
-                let signal = SignalInfo::new(s, message);
+                let signal = SignalInfo::new(s, &message);
                 signals.push(signal.ident.clone());
                 types.push(signal.ntype.clone());
 
@@ -736,12 +734,10 @@ impl<'a> DeriveData<'a> {
                     ""
                 };
                 let mut doc = format!(
-                    "Wire format: {} bit{} starting at bit {}{} ({})\n",
+                    "Wire format: {} bit{} starting at bit {}{scale_string} ({endian_string})\n",
                     s.signal_size(),
-                    if s.signal_size() != &1 { "s" } else { "" },
+                    if *s.signal_size() == 1 { "" } else { "s" },
                     s.start_bit(),
-                    scale_string,
-                    endian_string,
                 );
 
                 // value-table constants
@@ -749,7 +745,7 @@ impl<'a> DeriveData<'a> {
                     .dbc
                     .value_descriptions_for_signal(*m.message_id(), s.name())
                 {
-                    for desc in descs.iter() {
+                    for desc in descs {
                         let santized: String =
                             format!("{}_{}", s.name(), desc.b())
                                 .to_uppercase()
@@ -763,7 +759,7 @@ impl<'a> DeriveData<'a> {
                         values.extend(quote! {
                             pub const #c: #t = #v;
                         });
-                        doc += &format!("\n{c} = {v}\n");
+                        let _ = write!(doc, "\n{c} = {v}\n");
                     }
                 }
 
@@ -781,7 +777,7 @@ impl<'a> DeriveData<'a> {
             // build signal decoders and encoders
             let mut decoders = TokenStream::new();
             let mut encoders = TokenStream::new();
-            for info in infos.iter() {
+            for info in &infos {
                 decoders.append_all(info.gen_decoder());
                 encoders.append_all(info.gen_encoder());
             }
@@ -794,16 +790,13 @@ impl<'a> DeriveData<'a> {
             };
 
             let cycle_time_doc = if let Some(c) = message.cycle_time {
-                &format!(", cycle time {}ms", c)
+                &format!(", cycle time {c}ms")
             } else {
                 ""
             };
             let doc = format!(
-                "{} ID {} (0x{:X}){}",
+                "{} ID {id} (0x{id:X}){cycle_time_doc}",
                 if extended { "Extended" } else { "Standard" },
-                id,
-                id,
-                cycle_time_doc,
             );
 
             out.append_all(quote! {
@@ -884,12 +877,9 @@ fn derive_data(input: &DeriveInput) -> Result<TokenStream> {
 }
 
 fn parse_attr(attrs: &[Attribute], name: &str) -> Option<String> {
-    let attr = attrs
-        .iter()
-        .filter(|a| {
-            a.path().segments.len() == 1 && a.path().segments[0].ident == name
-        })
-        .nth(0)?;
+    let attr = attrs.iter().find(|a| {
+        a.path().segments.len() == 1 && a.path().segments[0].ident == name
+    })?;
 
     let expr = match &attr.meta {
         Meta::NameValue(n) => Some(&n.value),
