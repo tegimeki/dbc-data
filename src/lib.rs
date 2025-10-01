@@ -128,7 +128,7 @@ use syn::{
 
 struct DeriveData<'a> {
     /// Name of the struct we are deriving for
-    #[expect(dead_code)]
+    #[allow(dead_code)]
     name: &'a Ident,
     /// The parsed DBC file
     dbc: DBC,
@@ -311,7 +311,7 @@ impl<'a> SignalInfo<'a> {
     }
 
     /// Code generation for unaligned signals
-    #[expect(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines)]
     fn extract_unaligned(&self) -> TokenStream {
         let low = self.start / 8;
         let left = self.start % 8;
@@ -694,7 +694,7 @@ impl<'a> DeriveData<'a> {
         })
     }
 
-    #[expect(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines)]
     fn build(self) -> TokenStream {
         let mut out = TokenStream::new();
 

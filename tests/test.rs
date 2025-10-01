@@ -19,7 +19,7 @@ mod test {
         sixty_four_be: SixtyFourBitBE,
         sixty_four_signed: SixtyFourBitSigned,
         grouped: [GroupData1; 3],
-        #[expect(dead_code)]
+        #[allow(dead_code)]
         extended: Extended1,
     }
 
