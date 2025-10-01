@@ -1,4 +1,12 @@
-# dbc-data ![License: MIT](https://img.shields.io/badge/license-MIT-blue) [![dbc-data on crates.io](https://img.shields.io/crates/v/dbc-data)](https://crates.io/crates/dbc-data) [![dbc-data on docs.rs](https://docs.rs/dbc-data/badge.svg)](https://docs.rs/dbc-data) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitLab-blue?logo=GitLab)](https://gitlab.com/mfairman/dbc-data)
+# dbc-data
+
+[![GitHub repo](https://img.shields.io/badge/github-oxibus/dbc--data-8da0cb?logo=github)](https://github.com/oxibus/dbc-data)
+[![crates.io version](https://img.shields.io/crates/v/dbc-data)](https://crates.io/crates/dbc-data)
+[![crate usage](https://img.shields.io/crates/d/dbc-data)](https://crates.io/crates/dbc-data)
+[![docs.rs status](https://img.shields.io/docsrs/dbc-data)](https://docs.rs/dbc-data)
+[![crates.io license](https://img.shields.io/crates/l/dbc-data)](https://github.com/oxibus/dbc-data)
+[![CI build status](https://github.com/oxibus/dbc-data/actions/workflows/ci.yml/badge.svg)](https://github.com/oxibus/dbc-data/actions)
+[![Codecov](https://img.shields.io/codecov/c/github/oxibus/dbc-data)](https://app.codecov.io/gh/oxibus/dbc-data)
 
 A derive-macro which produces code to access signals within CAN
 messages, as described by a `.dbc` file.  The generated code has
@@ -7,7 +15,7 @@ is `#[no_std]` compatible.
 
 ## Changelog
 
-[CHANGELOG.md][__link0]
+[CHANGELOG.md](./CHANGELOG.md)
 
 ## Example
 
@@ -88,7 +96,7 @@ code, it can be helpful to wrap them in newtype declarations.
 Additionally, it is often desirable to scope these identifiers away
 from application code by using a private module:
 
-```rust
+```rust,no_run
 mod private {
     use dbc_data::DbcData;
     #[derive(DbcData)]
@@ -96,7 +104,6 @@ mod private {
 }
 
 pub type SomeMessageName = private::some_Message_NAME;
-
 ```
 
 The application uses this wrapped type without exposure to the
@@ -122,10 +129,24 @@ interfaces.
 * Support multiplexed signals
 * Emit `enum`s for value-tables, with optional type association
 
+## Development
+
+* This project is easier to develop with [just](https://github.com/casey/just#readme), a modern alternative to `make`.
+  Install it with `cargo install just`.
+* To get a list of available commands, run `just`.
+* To run tests, use `just test`.
+
 ## License
 
-[LICENSE-MIT][__link1]
+Licensed under either of
 
+* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
+* MIT license ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>)
+  at your option.
 
- [__link0]: CHANGELOG.md
- [__link1]: LICENSE-MIT
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in the work by you, as defined in the
+Apache-2.0 license, shall be dual-licensed as above, without any
+additional terms or conditions.

@@ -8,17 +8,44 @@ description = "Derive macro for CAN DBC code generation"
 repository = "https://github.com/oxibus/dbc-data"
 keywords = ["can", "automotive", "ecu", "no-std"]
 license = "MIT OR Apache-2.0"
-
+rust-version = "1.79"
 
 [lib]
 proc-macro = true
-
-[dev-dependencies]
-assert_hex = "0.4.1"
-assert-eq-float = "0.1.4"
 
 [dependencies]
 can-dbc = "6.0.0"
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["full", "extra-traits"] }
+
+[dev-dependencies]
+assert-eq-float = "0.1.4"
+assert_hex = "0.4.1"
+
+[lints.clippy]
+cast_possible_truncation = "allow"  # 36
+explicit_iter_loop = "allow"  # 15
+unreadable_literal = "allow"  # 13
+float_cmp = "allow"  #  9
+collapsible_else_if = "allow"  #  9
+cast_sign_loss = "allow"  #  9
+too_many_lines = "allow"  #  6
+if_not_else = "allow"  #  6
+approx_constant = "allow"  #  4
+unnecessary_semicolon = "allow"  #  3
+uninlined_format_args = "allow"  #  3
+single_match = "allow"  #  3
+single_char_pattern = "allow"  #  3
+similar_names = "allow"  #  3
+match_wild_err_arm = "allow"  #  3
+many_single_char_names = "allow"  #  3
+iter_nth_zero = "allow"  #  3
+items_after_statements = "allow"  #  3
+format_push_string = "allow"  #  3
+doc_markdown = "allow"  #  3
+default_trait_access = "allow"  #  3
+cast_lossless = "allow"  #  3
+cast_possible_wrap = "allow"  #  2
+bool_assert_comparison = "allow"  #  2
+assertions_on_constants = "allow"  #  2
