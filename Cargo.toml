@@ -1,6 +1,6 @@
 [package]
 name = "dbc-data"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 authors = ["Michael Fairman <mfairman@tegimeki.com>"]
 readme = "README.md"
