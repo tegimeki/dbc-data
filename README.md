@@ -52,6 +52,9 @@ fn test() {
 }
 ```
 
+An `enum` can also be used to derive the types for signals
+and messages.
+
 See the test cases in this crate for examples of usage.
 
 ## Code Generation

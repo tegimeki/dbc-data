@@ -41,6 +41,12 @@ mod test {
     }
 
     #[test]
+    fn cycle_time() {
+        assert_eq!(MiscMessage::CYCLE_TIME, 100);
+        assert_eq!(SixtyFourBitSigned::CYCLE_TIME, 2000);
+    }
+
+    #[test]
     fn value_table() {
         assert_eq_float!(MiscMessage::FLOAT_A_PI, 3.14f32);
         assert_eq_float!(MiscMessage::FLOAT_A_E, 2.718f32);
@@ -233,5 +239,24 @@ mod test {
         assert!(misc.is_err());
         let sixty_four = SixtyFourBitLE::try_from(&data[0..8]);
         assert!(sixty_four.is_ok());
+    }
+
+    #[test]
+    fn enum_declaration() {
+        #[allow(dead_code)]
+        #[derive(DbcData)]
+        #[dbc_file = "tests/test.dbc"]
+        enum Messages {
+            MiscMessage,
+        }
+        assert_eq!(MiscMessage::ID, 8191);
+    }
+
+    #[test]
+    fn incomplete_dbc() {
+        #[allow(dead_code)]
+        #[derive(DbcData)]
+        #[dbc_file = "tests/incomplete.dbc"]
+        enum Messages {}
     }
 }
