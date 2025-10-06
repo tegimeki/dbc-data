@@ -221,7 +221,7 @@ mod test {
         let mut t = Test::default();
         assert!(t.grouped[0]
             .decode(&[0xAA, 0x55, 0x01, 0x20, 0x34, 0x56, 0x78, 0x9A]));
-        assert_eq!(t.grouped[0].ValueA, 0x2001_55AA);
+        assert_eq_hex!(t.grouped[0].ValueA, 0x2001_55AA);
     }
 
     #[test]
