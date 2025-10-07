@@ -1,4 +1,11 @@
 # Changelog
+## [0.1.9](https://github.com/oxibus/dbc-data/compare/v0.1.8...v0.1.9) - 2025-10-07
+
+### Other
+
+- split into modules, add enum declaration support ([#6](https://github.com/oxibus/dbc-data/pull/6))
+- fix some clippy lints ([#5](https://github.com/oxibus/dbc-data/pull/5))
+
 ## 0.1.8
 * Move repo to OxiBUS GitHub organization
 * License change to MIT or Apache 2.0
